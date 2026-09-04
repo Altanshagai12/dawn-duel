@@ -1,5 +1,6 @@
 import { EntityViews } from './EntityViews.js';
 import { FogView } from './FogView.js';
+import { MAP } from '../../server/config.js';
 
 const SHEETS = {
   shana: [181, 181, './assets/heroes/shana.webp'],
@@ -18,7 +19,11 @@ export class GameScene extends Phaser.Scene {
 
   preload() {
     this.load.on('loaderror', file => console.error('[dawn-duel]', { event: 'asset_load_failed', key: file?.key, url: file?.url }));
-    this.load.image('ground', './assets/map/night-soil.webp');
+    this.load.image('battlefield', './assets/map/dawnfall-lane.webp');
+    this.load.image('farmSite', './assets/map/farm-site.webp');
+    this.load.image('tower', './assets/structures/tower.webp');
+    this.load.image('core', './assets/structures/core.webp');
+    this.load.image('arcBolt', './assets/effects/arc-bolt.webp');
     for (const [key, [frameWidth, frameHeight, path]] of Object.entries(SHEETS)) {
       this.load.spritesheet(key, path, { frameWidth, frameHeight });
     }
@@ -27,8 +32,9 @@ export class GameScene extends Phaser.Scene {
   create() {
     const frames = Object.keys(SHEETS).map(key => `${key}:${this.textures.get(key).frameTotal}`).join(',');
     console.info(`[dawn-duel] scene_ready textures=${this.textures.getTextureKeys().join(',')} frames=${frames}`);
-    this.cameras.main.setBounds(0, 0, 2000, 900).setBackgroundColor('#071010');
-    this.add.image(1000, 450, 'ground').setDisplaySize(2000, 900).setTint(0x9bc0aa).setDepth(-20);
+    this.cameras.main.setBounds(0, 0, MAP.width, MAP.height).setBackgroundColor('#071010');
+    this.add.image(MAP.width / 2, MAP.height / 2, 'battlefield')
+      .setDisplaySize(MAP.width, MAP.height).setDepth(-20);
     this.drawMap();
     this.views = new EntityViews(this, () => this.bridge.input?.());
     this.fog = new FogView(this);
@@ -41,20 +47,17 @@ export class GameScene extends Phaser.Scene {
 
   drawMap() {
     const g = this.add.graphics().setDepth(-10);
-    g.fillStyle(0x102622, .78).fillRoundedRect(0, 295, 2000, 310, 90);
-    g.lineStyle(2, 0x8ab5a0, .14).strokeRoundedRect(0, 295, 2000, 310, 90);
-    g.fillStyle(0x183e42, .72).fillRect(935, 0, 130, 900);
-    for (let y = 20; y < 900; y += 54) g.lineStyle(2, 0x5b9997, .12).lineBetween(945, y, 1055, y + 24);
-    g.fillStyle(0x55d5d0, .12).fillCircle(200, 450, 145).fillCircle(1800, 450, 145);
-    g.lineStyle(2, 0x5de6df, .3).strokeCircle(200, 450, 145);
-    g.lineStyle(2, 0xff747b, .3).strokeCircle(1800, 450, 145);
-    for (const [x, y] of [[575,170],[720,730],[1280,170],[1425,730]]) {
-      g.fillStyle(0x050d0d, .55).fillCircle(x, y, 78);
-      g.lineStyle(2, 0xb896ef, .28).strokeCircle(x, y, 72);
+    g.lineStyle(MAP.laneWidth, 0x78a496, .035)
+      .lineBetween(MAP.blueCoreX, MAP.blueCoreY, MAP.redCoreX, MAP.redCoreY);
+    g.lineStyle(4, 0xe8c879, .18)
+      .lineBetween(MAP.blueCoreX, MAP.blueCoreY, MAP.redCoreX, MAP.redCoreY);
+    for (const site of MAP.campSites) {
+      this.add.image(site.x, site.y, 'farmSite').setDisplaySize(180, 180).setAlpha(.78).setDepth(-8);
+      g.fillStyle(site.side ? 0xff747b : 0x5de6df, .07).fillCircle(site.x, site.y, 76);
+      g.lineStyle(2, site.side ? 0xff747b : 0x5de6df, .24).strokeCircle(site.x, site.y, 76);
     }
-    for (let x = 280; x < 1800; x += 120) {
-      g.fillStyle(0xc2d3a5, .08).fillCircle(x, x % 240 ? 318 : 582, 15);
-    }
+    g.fillStyle(0x5de6df, .08).fillCircle(MAP.blueCoreX, MAP.blueCoreY, 150);
+    g.fillStyle(0xff747b, .08).fillCircle(MAP.redCoreX, MAP.redCoreY, 150);
   }
 
   bindPointer() {
@@ -71,8 +74,8 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  resize(width, height) {
-    const zoom = Math.max(.7, Math.min(1.15, width / 1080));
+  resize(width) {
+    const zoom = Math.max(.68, Math.min(1.08, width / 1120));
     this.cameras.main.setZoom(zoom);
   }
 

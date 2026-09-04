@@ -2,6 +2,7 @@ import { MAP, PLAYER } from './config.js';
 import { applyDamage } from './combat.js';
 import { addEffect } from './effects.js';
 import { isPointVisible } from './fog.js';
+import { clampToOwnHalf, isBattlefieldWalkable, isOwnHalf, spawnPoint } from './geometry.js';
 import { HEROES } from './heroes.js';
 import { consumeSkillPress } from './inputs.js';
 import { clamp, distanceSquared, normalize, roundAround, stableSortByDistance } from './math.js';
@@ -95,7 +96,8 @@ function dash(world, player, skill) {
     const distance = skill.distance * step / steps;
     const x = clamp(origin.x + direction.x * distance, player.radius, MAP.width - player.radius);
     const y = clamp(origin.y + direction.y * distance, player.radius, MAP.height - player.radius);
-    if (blockedByStructure(world, x, y, player.radius)) break;
+    if (!isBattlefieldWalkable({ x, y }, player.radius)
+      || blockedByStructure(world, x, y, player.radius)) break;
     player.x = x;
     player.y = y;
   }
@@ -178,8 +180,13 @@ function resolveInstantIntents(world, intents) {
       hit.targetPosition.x - hit.source.x,
       hit.targetPosition.y - hit.source.y,
     );
-    target.x = clamp(hit.targetPosition.x + direction.x * Math.min(100, hit.skill.knockback), target.radius, MAP.width - target.radius);
-    target.y = clamp(hit.targetPosition.y + direction.y * Math.min(100, hit.skill.knockback), target.radius, MAP.height - target.radius);
+    const x = clamp(hit.targetPosition.x + direction.x * Math.min(100, hit.skill.knockback), target.radius, MAP.width - target.radius);
+    const y = clamp(hit.targetPosition.y + direction.y * Math.min(100, hit.skill.knockback), target.radius, MAP.height - target.radius);
+    if (isBattlefieldWalkable({ x, y }, target.radius)
+      && !blockedByStructure(world, x, y, target.radius)) {
+      target.x = x;
+      target.y = y;
+    }
     target.displaceImmuneUntil = world.matchTime + 0.4;
   }
 }
@@ -233,19 +240,22 @@ export function updatePlayers(world, dt) {
     let x = clamp(player.x + direction.x * direction.length * speed * dt, player.radius, MAP.width - player.radius);
     let y = clamp(player.y + direction.y * direction.length * speed * dt, player.radius, MAP.height - player.radius);
     if (player.spiritUntil > world.matchTime) {
-      x = player.team === 0 ? Math.min(x, MAP.riverX - player.radius) : Math.max(x, MAP.riverX + player.radius);
+      const clamped = clampToOwnHalf({ x, y }, player.team, player.radius);
+      x = clamped.x;
+      y = clamped.y;
     }
-    if (!blockedByStructure(world, x, y, player.radius)) {
+    if (isBattlefieldWalkable({ x, y }, player.radius)
+      && !blockedByStructure(world, x, y, player.radius)) {
       player.x = roundAround(x, MAP.width / 2);
       player.y = roundAround(y, MAP.height / 2);
     }
-    const spawnX = player.team === 0 ? MAP.blueSpawnX : MAP.redSpawnX;
-    const atFountain = distanceSquared(player, { x: spawnX, y: MAP.laneY }) <= PLAYER.fountainHealRadius ** 2;
+    const spawn = spawnPoint(player.team);
+    const atFountain = distanceSquared(player, spawn) <= PLAYER.fountainHealRadius ** 2;
     if (atFountain && player.spiritUntil <= world.matchTime
       && world.matchTime - player.lastHeroDamageAt >= PLAYER.fountainHealCombatDelay) {
       player.hp = Math.min(player.maxHp, player.hp + PLAYER.fountainHealPerSecond * dt);
     }
-    const ownHalf = player.team === (player.x < MAP.riverX ? 0 : 1);
+    const ownHalf = isOwnHalf(player, player.team);
     if (player.shieldSource === 'warden' && (!ownHalf || player.relic !== 'warden'
       || player.relicUntil <= world.matchTime)) {
       player.shield = 0;

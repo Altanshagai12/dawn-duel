@@ -39,7 +39,7 @@
         <div class="team-status team-status--red"><span id="red-label">RIVAL</span><b id="red-level">LV 1</b><i><em id="red-core"></em></i></div>
       </div>
       <div id="network" class="network"><i></i><span>SOLO</span></div>
-      <canvas id="minimap" width="220" height="96" aria-label="Minimap"></canvas>
+      <canvas id="minimap" width="192" height="108" aria-label="Minimap"></canvas>
       <div id="player-bars" class="player-bars">
         <div><span id="hero-name">SHANA</span><b id="hp-copy">1500 / 1500</b></div>
         <i><em id="hp-bar"></em><u id="shield-bar"></u></i>
@@ -48,16 +48,18 @@
       <div id="announcement" class="announcement"></div>
     </div>
 
-    <section id="upgrade" class="choice-tray is-hidden" aria-live="polite">
-      <p id="upgrade-title">DAWN UPGRADE <span id="upgrade-time">7</span></p>
-      <div id="upgrade-options"></div>
-      <button id="reroll" class="chip is-hidden" type="button">↻ REROLL</button>
-    </section>
+    <aside id="choice-stack" class="choice-stack">
+      <section id="upgrade" class="choice-tray is-hidden" aria-live="polite">
+        <p id="upgrade-title">DAWN UPGRADE <span id="upgrade-time">7</span></p>
+        <div id="upgrade-options"></div>
+        <button id="reroll" class="chip is-hidden" type="button">↻ REROLL</button>
+      </section>
 
-    <section id="relic" class="choice-tray choice-tray--relic is-hidden" aria-live="polite">
-      <p id="relic-title">GUARDIAN RELIC</p>
-      <div id="relic-options"></div>
-    </section>
+      <section id="relic" class="choice-tray choice-tray--relic is-hidden" aria-live="polite">
+        <p id="relic-title">GUARDIAN RELIC</p>
+        <div id="relic-options"></div>
+      </section>
+    </aside>
 
     <div id="controls" class="controls is-hidden">
       <div id="move-stick" class="stick"><i></i><span>MOVE</span></div>

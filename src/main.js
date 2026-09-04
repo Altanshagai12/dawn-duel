@@ -26,9 +26,7 @@ function attach(next) {
     bridge?.apply(snapshot);
     ui.update(snapshot);
     feedback.update(snapshot);
-    const player = snapshot.players[snapshot.you];
-    input.setEnabled(snapshot.match.phase === 'playing' && !snapshot.match.paused
-      && player?.spiritUntil <= snapshot.now && !player?.offer && !player?.relicOffer);
+    input.setEnabled(snapshot.match.phase === 'playing' && !snapshot.match.paused);
   });
   if (selectedHero) session.command('select_hero', { hero: selectedHero });
 }

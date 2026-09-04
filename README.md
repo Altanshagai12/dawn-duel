@@ -13,7 +13,8 @@ coordinates never enter the opponent's iframe.
 
 ## Game loop
 
-- One lane, one attacking tower and one attacking core per side.
+- One diagonal bottom-left → top-right lane, one attacking tower and one
+  attacking core per side, all aligned to an original illustrated battlefield.
 - Five minions per side every 24 seconds; late waves replace a melee unit with
   a siege unit.
 - Two neutral guardians on each half. Defeating both guardians from one half in
@@ -27,6 +28,10 @@ coordinates never enter the opponent's iframe.
   untargetable Wounded Spirit for 5–10 seconds.
 - Allied heroes, minions, tower, and core provide shared vision. Hidden enemy
   units, projectiles, camp state, and combat effects are removed server-side.
+- Level and relic offers appear as compact upper-right item cards without
+  pausing movement or combat; an unanswered offer auto-selects after 12 seconds.
+- Generated tower/core sprites, guardian-site decals, projectile art, animated
+  shot trails, impact bursts, and camera feedback keep every hit readable.
 
 ## Local development
 
@@ -72,7 +77,8 @@ deployed `server.bundle.js`; no Railway service is required.
 
 ## Assets
 
-The four hero atlases, portraits, minion atlases, guardian atlases, and ground
-texture are reused from the owner's Dawn Survivor repository. Gameplay code,
-map layout, balance, network model, UI, structures, effects, and rules in this
-repository are new for Dawn Duel.
+The four hero atlases, portraits, minion atlases, guardian atlases, and legacy
+ground texture are reused from the owner's Dawn Survivor repository. The
+diagonal battlefield, farm-site decal, tower/core structures, and projectile
+VFX were generated specifically for Dawn Duel. Gameplay code, layout, balance,
+network model, UI, structures, effects, and rules in this repository are new.

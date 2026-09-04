@@ -1,6 +1,8 @@
 import { PLAYER, RELICS, UPGRADES, XP_THRESHOLDS } from './config.js';
 import { seededOrder } from './random.js';
 
+const CHOICE_SECONDS = 12;
+
 export function derivedStats(player) {
   const rank = id => Math.min(UPGRADES[id].maxRank, Math.max(0, Number(player.ranks[id] || 0)));
   return {
@@ -23,7 +25,7 @@ export function createUpgradeOffer(world, player, reroll = false) {
   const salt = Math.imul(player.level + (reroll ? 97 : 0), 2654435761);
   const ordered = seededOrder(ids, (world.matchSeed ^ salt) >>> 0);
   player.offer = ordered.slice(0, 3);
-  player.offerExpiresAt = world.matchTime + 7;
+  player.offerExpiresAt = world.matchTime + CHOICE_SECONDS;
   return player.offer;
 }
 
@@ -95,7 +97,7 @@ export function updateOffers(world) {
 }
 
 export function offerRelic(world, player) {
-  player.relicOffer = { ids: Object.keys(RELICS), expiresAt: world.matchTime + 7 };
+  player.relicOffer = { ids: Object.keys(RELICS), expiresAt: world.matchTime + CHOICE_SECONDS };
 }
 
 export function chooseRelic(world, player, id) {

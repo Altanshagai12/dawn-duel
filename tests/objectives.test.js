@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MATCH } from '../server/config.js';
+import { MAP, MATCH } from '../server/config.js';
 import { applyDamage } from '../server/combat.js';
+import { laneProgress } from '../server/geometry.js';
 import { updateCamps } from '../server/camps.js';
-import { spawnWave } from '../server/lane.js';
+import { spawnWave, updateMinions } from '../server/lane.js';
 import { playingWorld } from './helpers.js';
 
 test('each 24 second wave contains five symmetric units', () => {
@@ -18,9 +19,25 @@ test('each 24 second wave contains five symmetric units', () => {
   const blue = world.minions.filter(unit => unit.team === 0);
   const red = world.minions.filter(unit => unit.team === 1);
   blue.forEach((unit, index) => {
-    assert.equal(red[index].x, 2000 - unit.x);
-    assert.equal(red[index].y, 900 - unit.y);
+    assert.ok(Math.abs(red[index].x - (MAP.width - unit.x)) < 0.001);
+    assert.ok(Math.abs(red[index].y - (MAP.height - unit.y)) < 0.001);
   });
+});
+
+test('the authoritative lane advances bottom-left to top-right with rotational symmetry', () => {
+  const { world } = playingWorld();
+  spawnWave(world);
+  const blue = world.minions.find(unit => unit.team === 0);
+  const red = world.minions.find(unit => unit.team === 1);
+  const blueStart = { x: blue.x, y: blue.y, progress: laneProgress(blue) };
+  const redStart = { x: red.x, y: red.y, progress: laneProgress(red) };
+  updateMinions(world, 0.1);
+  assert.ok(blue.x > blueStart.x && blue.y < blueStart.y);
+  assert.ok(red.x < redStart.x && red.y > redStart.y);
+  assert.ok(laneProgress(blue) > blueStart.progress);
+  assert.ok(laneProgress(red) < redStart.progress);
+  assert.ok(Math.abs(red.x - (MAP.width - blue.x)) < 0.001);
+  assert.ok(Math.abs(red.y - (MAP.height - blue.y)) < 0.001);
 });
 
 test('core is invulnerable until tower falls and backdoor damage is reduced', () => {

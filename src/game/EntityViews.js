@@ -1,3 +1,5 @@
+import { MAP } from '../../server/config.js';
+
 const HERO_SCALE = { shana: .43, diamond: .42, scarlett: .43, hina: .43 };
 const MINION_TEXTURE = { melee: 'wingling', ranged: 'spitter', siege: 'brute' };
 const CAMP_TEXTURE = { aegis: 'aegis', tempo: 'tempo' };
@@ -43,26 +45,29 @@ export class EntityViews {
 
   createProjectile(entity) {
     const color = entity.projectileType?.includes('ember') || entity.projectileType === 'flame' ? 0xff7b45 : COLORS[entity.team];
-    const radius = entity.projectileType === 'flame' ? 13 : entity.radius || 7;
-    const root = this.scene.add.circle(entity.x, entity.y, radius, color, .95).setDepth(600);
-    root.setStrokeStyle(2, 0xffffff, .45);
+    const width = entity.projectileType === 'flame' ? 82 : entity.projectileType === 'precision' ? 92 : 60;
+    const root = this.scene.add.image(entity.x, entity.y, 'arcBolt').setDisplaySize(width, width * .34)
+      .setTint(color).setRotation(Math.atan2(entity.dy || 0, entity.dx || 1)).setDepth(600);
+    root.setBlendMode(Phaser.BlendModes.ADD);
     return { root, sprite: root, entity, targetX: entity.x, targetY: entity.y, lastX: entity.x, lastY: entity.y };
   }
 
   createStructure(entity) {
-    const size = entity.kind === 'core' ? 92 : 66;
+    const size = entity.kind === 'core' ? 118 : 88;
     const root = this.scene.add.container(entity.x, entity.y).setDepth(entity.y + 10);
     const range = this.scene.add.circle(0, 0, STRUCTURE_RANGE[entity.kind], COLORS[entity.team], .025)
       .setStrokeStyle(2, COLORS[entity.team], .11);
-    const aura = this.scene.add.circle(0, 0, size * .72, COLORS[entity.team], .1).setStrokeStyle(2, COLORS[entity.team], .4);
-    const body = this.scene.add.polygon(0, 0, entity.kind === 'core'
-      ? [-32, 28, -42, -12, 0, -48, 42, -12, 32, 28, 0, 45]
-      : [-24, 29, -29, -15, 0, -40, 29, -15, 24, 29, 0, 39], 0x132b29, 1).setStrokeStyle(3, COLORS[entity.team], .9);
-    const crystal = this.scene.add.circle(0, -10, entity.kind === 'core' ? 16 : 11, COLORS[entity.team], .9);
-    const barBg = this.scene.add.rectangle(0, -size * .65, size, 7, 0x020707, .9);
-    const bar = this.scene.add.rectangle(-size / 2, -size * .65, size, 5, COLORS[entity.team], 1).setOrigin(0, .5);
-    root.add([range, aura, body, crystal, barBg, bar]);
-    return { root, sprite: crystal, bar, entity, targetX: entity.x, targetY: entity.y, lastX: entity.x, lastY: entity.y };
+    const aura = this.scene.add.circle(0, -8, size * .66, COLORS[entity.team], .09)
+      .setStrokeStyle(3, COLORS[entity.team], .42);
+    const sprite = this.scene.add.image(0, 0, entity.kind).setOrigin(.5, .73)
+      .setDisplaySize(entity.kind === 'core' ? 190 : 118, entity.kind === 'core' ? 181 : 177)
+      .setTint(entity.team === 0 ? 0xc8ffff : 0xffc4ca);
+    const barY = entity.kind === 'core' ? -142 : -136;
+    const barBg = this.scene.add.rectangle(0, barY, size, 9, 0x020707, .94);
+    const bar = this.scene.add.rectangle(-size / 2, barY, size, 6, COLORS[entity.team], 1).setOrigin(0, .5);
+    root.add([range, aura, sprite, barBg, bar]);
+    this.scene.tweens.add({ targets: aura, alpha: .2, scale: 1.08, duration: 900, yoyo: true, repeat: -1 });
+    return { root, sprite, bar, entity, targetX: entity.x, targetY: entity.y, lastX: entity.x, lastY: entity.y };
   }
 
   apply(snapshot) {
@@ -106,8 +111,8 @@ export class EntityViews {
         const scale = magnitude > 0 ? magnitude / Math.hypot(input.moveX, input.moveY) : 0;
         const moveX = (input?.moveX || 0) * scale;
         const moveY = (input?.moveY || 0) * scale;
-        view.root.x = Phaser.Math.Clamp(view.root.x + moveX * 180 * delta / 1000, 21, 1979);
-        view.root.y = Phaser.Math.Clamp(view.root.y + moveY * 180 * delta / 1000, 21, 879);
+        view.root.x = Phaser.Math.Clamp(view.root.x + moveX * 180 * delta / 1000, 21, MAP.width - 21);
+        view.root.y = Phaser.Math.Clamp(view.root.y + moveY * 180 * delta / 1000, 21, MAP.height - 21);
         if (magnitude > .05) {
           facingX = moveX;
           facingY = moveY;
@@ -136,11 +141,7 @@ export class EntityViews {
         const line = this.scene.add.line(0, 0, effect.x, effect.y, effect.tx, effect.ty, COLORS[effect.team], .6).setOrigin(0).setLineWidth(10).setDepth(590);
         this.scene.tweens.add({ targets: line, alpha: 0, duration: 260, onComplete: () => line.destroy() });
       } else if ((effect.kind === 'structureShot' || effect.kind === 'minionShot') && Number.isFinite(effect.tx)) {
-        const width = effect.kind === 'structureShot' ? 4 : 2;
-        const line = this.scene.add.line(0, 0, effect.x, effect.y, effect.tx, effect.ty, COLORS[effect.team], .82)
-          .setOrigin(0).setLineWidth(width).setDepth(605);
-        const bolt = this.scene.add.circle(effect.tx, effect.ty, width + 3, COLORS[effect.team], .9).setDepth(606);
-        this.scene.tweens.add({ targets: [line, bolt], alpha: 0, duration: 230, onComplete: () => { line.destroy(); bolt.destroy(); } });
+        this.renderShot(effect);
       } else if (Number.isFinite(effect.x)) {
         const color = effect.kind === 'defeat' ? 0xffffff : effect.kind === 'campStrike' ? 0xff6b56 : COLORS[effect.team] || 0xd0a5ff;
         const ring = this.scene.add.circle(effect.x, effect.y, effect.radius || 18, color, .2).setStrokeStyle(2, color, .8).setDepth(610);
@@ -148,5 +149,56 @@ export class EntityViews {
       }
     }
     if (this.seenEffects.size > 500) this.seenEffects.clear();
+  }
+
+  renderShot(effect) {
+    const structure = effect.kind === 'structureShot';
+    const color = COLORS[effect.team];
+    const startY = effect.y - (structure ? 72 : 12);
+    const angle = Math.atan2(effect.ty - startY, effect.tx - effect.x);
+    const glow = this.scene.add.line(0, 0, effect.x, startY, effect.tx, effect.ty, color, structure ? .34 : .22)
+      .setOrigin(0).setLineWidth(structure ? 9 : 5).setDepth(603).setBlendMode(Phaser.BlendModes.ADD);
+    const beam = this.scene.add.line(0, 0, effect.x, startY, effect.tx, effect.ty, 0xffffff, .9)
+      .setOrigin(0).setLineWidth(structure ? 2 : 1).setDepth(604);
+    const bolt = this.scene.add.image(effect.x, startY, 'arcBolt')
+      .setDisplaySize(structure ? 112 : 66, structure ? 42 : 25)
+      .setRotation(angle).setTint(color).setDepth(606).setBlendMode(Phaser.BlendModes.ADD);
+    const duration = structure ? 280 : 190;
+    this.scene.tweens.add({
+      targets: bolt,
+      x: effect.tx,
+      y: effect.ty,
+      duration,
+      ease: 'Quad.easeIn',
+      onComplete: () => {
+        bolt.destroy();
+        this.impactBurst(effect.tx, effect.ty, color, structure);
+      },
+    });
+    this.scene.tweens.add({
+      targets: [glow, beam], alpha: 0, delay: duration * .42, duration: duration * .85,
+      onComplete: () => { glow.destroy(); beam.destroy(); },
+    });
+  }
+
+  impactBurst(x, y, color, strong) {
+    const radius = strong ? 28 : 17;
+    const flash = this.scene.add.circle(x, y, radius * .45, 0xffffff, .95).setDepth(610)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const ring = this.scene.add.circle(x, y, radius, color, .24).setStrokeStyle(strong ? 5 : 3, color, .95)
+      .setDepth(609).setBlendMode(Phaser.BlendModes.ADD);
+    const sparks = Array.from({ length: strong ? 8 : 5 }, (_, index) => {
+      const angle = Math.PI * 2 * index / (strong ? 8 : 5);
+      return this.scene.add.circle(x, y, strong ? 4 : 3, index % 2 ? 0xffffff : color, .9).setDepth(611)
+        .setData('tx', x + Math.cos(angle) * radius * 1.7)
+        .setData('ty', y + Math.sin(angle) * radius * 1.7);
+    });
+    for (const spark of sparks) this.scene.tweens.add({
+      targets: spark, x: spark.getData('tx'), y: spark.getData('ty'), alpha: 0, duration: 260,
+      onComplete: () => spark.destroy(),
+    });
+    this.scene.tweens.add({ targets: flash, scale: 2.4, alpha: 0, duration: 180, onComplete: () => flash.destroy() });
+    this.scene.tweens.add({ targets: ring, scale: 1.8, alpha: 0, duration: 300, onComplete: () => ring.destroy() });
+    this.scene.cameras.main.shake(strong ? 70 : 35, strong ? .0014 : .0005);
   }
 }

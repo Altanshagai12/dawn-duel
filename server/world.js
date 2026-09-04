@@ -1,9 +1,10 @@
 import { CAMPS, MAP, MATCH, PLAYER, STRUCTURES } from './config.js';
+import { spawnPoint, teamDirection } from './geometry.js';
 
-function structure(id, team, kind, x) {
+function structure(id, team, kind, x, y) {
   const config = STRUCTURES[kind];
   return {
-    id, team, kind, x, y: MAP.laneY, radius: config.radius,
+    id, team, kind, x, y, radius: config.radius,
     hp: config.hp, maxHp: config.hp, attackReadyAt: 0, rampTarget: null, rampHits: 0,
   };
 }
@@ -47,16 +48,16 @@ export function createWorld(seed = 20260904) {
     clones: [],
     effects: [],
     structures: {
-      blueTower: structure('blueTower', 0, 'tower', 430),
-      redTower: structure('redTower', 1, 'tower', 1570),
-      blueCore: structure('blueCore', 0, 'core', 100),
-      redCore: structure('redCore', 1, 'core', 1900),
+      blueTower: structure('blueTower', 0, 'tower', MAP.blueTowerX, MAP.blueTowerY),
+      redTower: structure('redTower', 1, 'tower', MAP.redTowerX, MAP.redTowerY),
+      blueCore: structure('blueCore', 0, 'core', MAP.blueCoreX, MAP.blueCoreY),
+      redCore: structure('redCore', 1, 'core', MAP.redCoreX, MAP.redCoreY),
     },
     camps: [
-      camp('blueAegis', 0, 'aegis', 575, 170),
-      camp('blueTempo', 0, 'tempo', 720, 730),
-      camp('redTempo', 1, 'tempo', 1280, 170),
-      camp('redAegis', 1, 'aegis', 1425, 730),
+      camp('blueAegis', 0, 'aegis', MAP.campSites[0].x, MAP.campSites[0].y),
+      camp('blueTempo', 0, 'tempo', MAP.campSites[1].x, MAP.campSites[1].y),
+      camp('redAegis', 1, 'aegis', MAP.campSites[2].x, MAP.campSites[2].y),
+      camp('redTempo', 1, 'tempo', MAP.campSites[3].x, MAP.campSites[3].y),
     ],
     campProgress: {
       0: { killerId: null, ids: [] },
@@ -69,15 +70,16 @@ export function addPlayer(world, id, name = 'Player') {
   if (!id || world.players[id]) return world.players[id] || null;
   if (world.playerOrder.length >= 2) return null;
   const team = world.playerOrder.length;
-  const spawnX = team === 0 ? MAP.blueSpawnX : MAP.redSpawnX;
+  const spawn = spawnPoint(team);
+  const facing = teamDirection(team);
   const player = {
     id: String(id).slice(0, 80),
     kind: 'player',
     name: String(name || 'Player').slice(0, 24),
     team,
     hero: null,
-    x: spawnX,
-    y: MAP.laneY,
+    x: spawn.x,
+    y: spawn.y,
     radius: PLAYER.radius,
     hp: PLAYER.hp,
     maxHp: PLAYER.hp,
@@ -119,7 +121,7 @@ export function addPlayer(world, id, name = 'Player') {
     relic: null,
     relicUntil: 0,
     wardenReadyAt: 0,
-    input: { seq: -1, moveX: 0, moveY: 0, aimX: team === 0 ? 1 : -1, aimY: 0, attack: false, skill1: false, skill2: false },
+    input: { seq: -1, moveX: 0, moveY: 0, aimX: facing.x, aimY: facing.y, attack: false, skill1: false, skill2: false },
     inputFresh: false,
     lastInputAt: 0,
     connected: true,
@@ -138,8 +140,9 @@ export function removePlayer(world, id) {
 }
 
 export function resetPlayerAtFountain(player) {
-  player.x = player.team === 0 ? MAP.blueSpawnX : MAP.redSpawnX;
-  player.y = MAP.laneY;
+  const spawn = spawnPoint(player.team);
+  player.x = spawn.x;
+  player.y = spawn.y;
   player.hp = player.maxHp;
   player.shield = 0;
   player.shieldSource = null;

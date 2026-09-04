@@ -1,5 +1,6 @@
 import { MAP, PLAYER } from './config.js';
 import { isPointVisible } from './fog.js';
+import { laneOffset, lanePoint, laneProgress, spawnPoint, teamDirection } from './geometry.js';
 import { applyCommand } from './inputs.js';
 import { distanceSquared, normalize, stableSortByDistance } from './math.js';
 
@@ -21,18 +22,29 @@ function chooseTarget(world, bot) {
 
 function navigationWaypoint(world, bot, target) {
   if (!target) return null;
+  const botOffset = laneOffset(bot);
+  if (Math.abs(botOffset) > MAP.laneWidth / 2 - bot.radius - 8) {
+    return lanePoint(laneProgress(bot));
+  }
+  if (target.kind === 'camp') {
+    const approach = lanePoint(laneProgress(target));
+    return distanceSquared(bot, approach) > 70 ** 2 ? approach : null;
+  }
   const tower = bot.team === 0 ? world.structures.blueTower : world.structures.redTower;
   if (tower.hp <= 0) return null;
-  const direction = bot.team === 0 ? 1 : -1;
-  const outbound = bot.team === 0
-    ? bot.x < tower.x + 85 && target.x > tower.x
-    : bot.x > tower.x - 85 && target.x < tower.x;
-  const inbound = bot.team === 0
-    ? bot.x > tower.x - 85 && target.x < tower.x
-    : bot.x < tower.x + 85 && target.x > tower.x;
-  if (!outbound && !inbound) return null;
-  const side = Math.abs(target.y - tower.y) > 80 ? Math.sign(target.y - tower.y) : (bot.team === 0 ? -1 : 1);
-  return { x: tower.x + direction * (outbound ? 110 : -110), y: tower.y + side * 145 };
+  const botProgress = laneProgress(bot);
+  const targetProgress = laneProgress(target);
+  const towerProgress = laneProgress(tower);
+  const crosses = (botProgress < towerProgress && targetProgress > towerProgress)
+    || (botProgress > towerProgress && targetProgress < towerProgress);
+  if (!crosses && Math.abs(botProgress - towerProgress) > 85) return null;
+  const travel = targetProgress >= botProgress ? 1 : -1;
+  const targetOffset = laneOffset(target);
+  const side = Math.abs(targetOffset) > 80 ? Math.sign(targetOffset) : (bot.team === 0 ? -1 : 1);
+  return {
+    x: tower.x + MAP.laneUnitX * travel * 110 + MAP.laneNormalX * side * 112,
+    y: tower.y + MAP.laneUnitY * travel * 110 + MAP.laneNormalY * side * 112,
+  };
 }
 
 function dodgeGuardian(world, bot) {
@@ -40,7 +52,9 @@ function dodgeGuardian(world, bot) {
     && distanceSquared(bot, camp.pendingStrike) <= (camp.pendingStrike.radius + 36) ** 2);
   if (!danger) return null;
   const from = normalize(bot.x - danger.pendingStrike.x, bot.y - danger.pendingStrike.y);
-  return from.length ? from : { x: 0, y: bot.team === 0 ? 1 : -1 };
+  if (from.length) return from;
+  const sign = bot.team === 0 ? 1 : -1;
+  return { x: MAP.laneNormalX * sign, y: MAP.laneNormalY * sign };
 }
 
 export function updateBot(world, botId, memory = {}) {
@@ -49,11 +63,11 @@ export function updateBot(world, botId, memory = {}) {
   memory.seq = (memory.seq || 0) + 1;
   if (bot.offer) applyCommand(world, bot.id, 'upgrade', { id: bot.offer[0] });
   if (bot.relicOffer) applyCommand(world, bot.id, 'relic', { id: bot.relicOffer.ids[0] });
-  const home = { x: bot.team === 0 ? MAP.blueSpawnX : MAP.redSpawnX, y: MAP.laneY };
+  const home = spawnPoint(bot.team);
   if (bot.hp < bot.maxHp * 0.3) memory.retreating = true;
   if (memory.retreating && bot.hp >= bot.maxHp * 0.78) memory.retreating = false;
   const target = memory.retreating ? home : chooseTarget(world, bot);
-  const aim = target ? normalize(target.x - bot.x, target.y - bot.y) : { x: bot.team ? -1 : 1, y: 0 };
+  const aim = target ? normalize(target.x - bot.x, target.y - bot.y) : teamDirection(bot.team);
   const range = target ? Math.sqrt(distanceSquared(bot, target)) : Infinity;
   const waypoint = navigationWaypoint(world, bot, target);
   const route = waypoint ? normalize(waypoint.x - bot.x, waypoint.y - bot.y) : aim;

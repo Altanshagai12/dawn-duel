@@ -1,5 +1,6 @@
 import { CAMPS, MAP, MATCH, MINIONS, PLAYER, STRUCTURES } from './config.js';
 import { addEffect } from './effects.js';
+import { isBattlefieldWalkable } from './geometry.js';
 import { clamp, distanceSquared, normalize, round } from './math.js';
 import { awardXp, heroKillXp, offerRelic } from './progression.js';
 import { resetPlayerAtFountain } from './world.js';
@@ -144,8 +145,12 @@ function pushTarget(world, target, sourceId, distance) {
   const source = findEntity(world, sourceId);
   if (!source) return;
   const direction = normalize(target.x - source.x, target.y - source.y);
-  target.x = clamp(target.x + direction.x * distance, target.radius, MAP.width - target.radius);
-  target.y = clamp(target.y + direction.y * distance, target.radius, MAP.height - target.radius);
+  const x = clamp(target.x + direction.x * distance, target.radius, MAP.width - target.radius);
+  const y = clamp(target.y + direction.y * distance, target.radius, MAP.height - target.radius);
+  if (isBattlefieldWalkable({ x, y }, target.radius)) {
+    target.x = x;
+    target.y = y;
+  }
   target.displaceImmuneUntil = world.matchTime + 0.4;
 }
 

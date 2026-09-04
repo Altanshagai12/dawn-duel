@@ -1,6 +1,7 @@
 import { MAP, MINIONS, STRUCTURES } from './config.js';
 import { applyDamage, findEntity } from './combat.js';
 import { addEffect } from './effects.js';
+import { formationPoint, lanePoint, laneProgress } from './geometry.js';
 import { distanceSquared, normalize, roundAround, stableSortByDistance } from './math.js';
 
 const LANE_OFFSETS = [-46, -22, 0, 22, 46];
@@ -29,15 +30,16 @@ export function spawnWave(world) {
     types.forEach((minionType, index) => {
       const config = MINIONS[minionType];
       const hp = Math.round(config.hp * scale.hp);
-      const laneY = MAP.laneY + LANE_OFFSETS[index] * direction;
+      const laneOffset = LANE_OFFSETS[index] * direction;
+      const point = formationPoint(team, 45 + index * 13, LANE_OFFSETS[index]);
       world.minions.push({
         id: `m${world.nextEntityId++}`,
         kind: 'minion',
         minionType,
         team,
-        x: team === 0 ? MAP.blueSpawnX + 45 + index * 13 : MAP.redSpawnX - 45 - index * 13,
-        y: laneY,
-        laneY,
+        x: point.x,
+        y: point.y,
+        laneOffset,
         radius: config.radius,
         hp,
         maxHp: hp,
@@ -71,9 +73,16 @@ function minionTarget(world, minion) {
 
 function movementToward(entity, target, speed, dt) {
   const direction = normalize(target.x - entity.x, target.y - entity.y);
-  const x = roundAround(entity.x + direction.x * speed * dt, MAP.width / 2);
-  const rawY = roundAround(entity.y + direction.y * speed * dt, MAP.height / 2);
-  return { x, y: roundAround(rawY + (entity.laneY - rawY) * Math.min(1, dt * 1.8), MAP.height / 2) };
+  const raw = {
+    x: entity.x + direction.x * speed * dt,
+    y: entity.y + direction.y * speed * dt,
+  };
+  const anchor = lanePoint(laneProgress(raw), entity.laneOffset);
+  const pull = Math.min(1, dt * 1.8);
+  return {
+    x: roundAround(raw.x + (anchor.x - raw.x) * pull, MAP.width / 2),
+    y: roundAround(raw.y + (anchor.y - raw.y) * pull, MAP.height / 2),
+  };
 }
 
 export function updateMinions(world, dt) {
@@ -100,8 +109,9 @@ export function updateMinions(world, dt) {
   }
   for (const { minion, position } of movements) Object.assign(minion, position);
   for (const { minion, target, amount } of attacks) {
+    const impact = { tx: target.x, ty: target.y };
     applyDamage(world, target, amount, 'minion', minion.id);
-    addEffect(world, 'minionShot', { x: minion.x, y: minion.y, tx: target.x, ty: target.y, team: minion.team }, 0.18);
+    addEffect(world, 'minionShot', { x: minion.x, y: minion.y, ...impact, team: minion.team }, 0.18);
   }
 }
 
@@ -146,8 +156,9 @@ export function updateStructures(world) {
       structure.rampTarget = null;
       structure.rampHits = 0;
     }
+    const impact = { tx: target.x, ty: target.y };
     applyDamage(world, target, damage, 'structure', structure.id);
-    addEffect(world, 'structureShot', { x: structure.x, y: structure.y, tx: target.x, ty: target.y, team: structure.team }, 0.24);
+    addEffect(world, 'structureShot', { x: structure.x, y: structure.y, ...impact, team: structure.team }, 0.24);
   }
 }
 

@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { updateBot } from '../server/bot.js';
 import { MAP } from '../server/config.js';
+import { lanePoint, laneProgress } from '../server/geometry.js';
 import { applyCommand, applyInput } from '../server/inputs.js';
+import { normalize } from '../server/math.js';
 import { stepWorld } from '../server/sim.js';
 import { addPlayer, createWorld } from '../server/world.js';
 
@@ -32,13 +34,14 @@ function simulateDuel(blueHero, redHero, range = 400) {
   applyCommand(world, blue.id, 'select_hero', { hero: blueHero });
   applyCommand(world, red.id, 'select_hero', { hero: redHero });
   world.phase = 'playing'; world.matchTime = 1; world.roomNow = 1; world.nextWaveAt = 999;
-  blue.x = MAP.width / 2 - range / 2; red.x = MAP.width / 2 + range / 2;
+  Object.assign(blue, lanePoint(MAP.riverProgress - range / 2));
+  Object.assign(red, lanePoint(MAP.riverProgress + range / 2));
   for (let tick = 1; tick <= 600 && blue.deaths + red.deaths === 0; tick += 1) {
     for (const player of [blue, red]) {
       const rival = player === blue ? red : blue;
-      const direction = Math.sign(rival.x - player.x) || (player.team === 0 ? 1 : -1);
+      const direction = normalize(rival.x - player.x, rival.y - player.y);
       applyInput(world, player.id, {
-        seq: tick, moveX: 0, moveY: 0, aimX: direction, aimY: 0, attack: true,
+        seq: tick, moveX: 0, moveY: 0, aimX: direction.x, aimY: direction.y, attack: true,
         skill1: world.matchTime >= player.skillReady[0],
         skill2: world.matchTime >= player.skillReady[1],
       });
@@ -64,8 +67,8 @@ function simulateProgress(blueHero = 'shana', redHero = 'diamond') {
     }
     stepWorld(world, 1 / 30);
     if (world.matchTime <= 120) {
-      blueCrossed ||= world.players.blue.x > world.structures.blueTower.x + 80;
-      redCrossed ||= world.players.red.x < world.structures.redTower.x - 80;
+      blueCrossed ||= laneProgress(world.players.blue) > laneProgress(world.structures.blueTower) + 80;
+      redCrossed ||= laneProgress(world.players.red) < laneProgress(world.structures.redTower) - 80;
     }
     if (world.matchTime < 480) {
       objectiveDamaged ||= world.structures.blueTower.hp < world.structures.blueTower.maxHp
@@ -152,13 +155,14 @@ test('a low-health bot reaches its fountain, heals, then rejoins the lane', () =
   applyCommand(world, 'blue', 'select_hero', { hero: 'shana' });
   applyCommand(world, 'red', 'select_hero', { hero: 'diamond' });
   world.phase = 'playing'; world.nextWaveAt = 999;
-  blue.x = 800; blue.hp = 300;
+  Object.assign(blue, lanePoint(650)); blue.hp = 300;
   let memory = {}; let reachedFountain = false; let rejoined = false;
   for (let tick = 0; tick < 1200; tick += 1) {
     if (tick % 3 === 0) memory = updateBot(world, 'blue', memory);
     stepWorld(world, 1 / 30);
-    reachedFountain ||= Math.abs(blue.x - MAP.blueSpawnX) < 120;
-    rejoined ||= reachedFountain && blue.hp >= blue.maxHp * .78 && blue.x > world.structures.blueTower.x + 80;
+    reachedFountain ||= Math.hypot(blue.x - MAP.blueSpawnX, blue.y - MAP.blueSpawnY) < 120;
+    rejoined ||= reachedFountain && blue.hp >= blue.maxHp * .78
+      && laneProgress(blue) > laneProgress(world.structures.blueTower) + 80;
   }
   assert.equal(reachedFountain, true);
   assert.equal(rejoined, true);

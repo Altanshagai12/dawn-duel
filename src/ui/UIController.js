@@ -129,7 +129,6 @@ export class UIController {
     const relic = $('#relic');
     relic.classList.toggle('is-hidden', !player.relicOffer);
     if (player.relicOffer) this.renderOptions('#relic-options', player.relicOffer.ids, this.t().relics, id => this.callbacks.command?.('relic', { id }));
-    $('#controls').classList.toggle('is-choice-open', Boolean(player.offer || player.relicOffer));
   }
 
   updateCooldowns(player, now) {
@@ -150,7 +149,7 @@ export class UIController {
     root.replaceChildren(...ids.map(id => {
       const button = document.createElement('button');
       button.type = 'button'; button.className = 'option';
-      button.innerHTML = `<strong>${labels[id][0]}</strong><span>${labels[id][1]}</span>`;
+      button.innerHTML = `<i aria-hidden="true">${labels[id][0].slice(0, 1)}</i><span><strong>${labels[id][0]}</strong><small>${labels[id][1]}</small></span>`;
       button.addEventListener('click', () => callback(id));
       return button;
     }));
@@ -181,7 +180,16 @@ export class UIController {
     const sy = canvas.height / snapshot.map.height;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#0b1b1b'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#19312a'; ctx.fillRect(0, snapshot.map.laneTop * sy, canvas.width, (snapshot.map.laneBottom - snapshot.map.laneTop) * sy);
+    ctx.strokeStyle = '#425c52';
+    ctx.lineWidth = snapshot.map.laneWidth * Math.min(sx, sy);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(snapshot.map.blueCoreX * sx, snapshot.map.blueCoreY * sy);
+    ctx.lineTo(snapshot.map.redCoreX * sx, snapshot.map.redCoreY * sy);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(245,198,106,.32)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
     ctx.fillStyle = 'rgba(78,230,224,.16)';
     for (const source of snapshot.vision) ctx.beginPath(), ctx.arc(source.x * sx, source.y * sy, Math.max(2, source.radius * sx), 0, Math.PI * 2), ctx.fill();
     for (const structure of Object.values(snapshot.structures)) this.dot(ctx, structure, sx, sy, structure.team ? '#ff6b72' : '#4ee6e0', structure.kind === 'core' ? 5 : 3);

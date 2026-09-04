@@ -13,7 +13,7 @@
 .network i { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 8px currentColor; }
 .network.online i { background: #60ef9a; }
 .network.poor i { background: var(--red); }
-#minimap { position: absolute; top: max(78px, calc(env(safe-area-inset-top) + 70px)); right: max(10px, env(safe-area-inset-right)); width: 180px; height: 78px; border: 1px solid var(--line); background: rgba(2,10,11,.82); }
+#minimap { position: absolute; top: max(100px, calc(env(safe-area-inset-top) + 92px)); left: max(10px, env(safe-area-inset-left)); width: 168px; height: 94px; border: 1px solid var(--line); background: rgba(2,10,11,.82); box-shadow: 0 10px 30px rgba(0,0,0,.3); }
 .player-bars { position: absolute; left: 50%; bottom: max(15px, env(safe-area-inset-bottom)); width: min(310px, 36vw); padding: 9px 12px; transform: translateX(-50%); background: rgba(4,14,15,.82); border: 1px solid var(--line); }
 .player-bars div { display: flex; justify-content: space-between; font-size: 9px; letter-spacing: .08em; }
 .player-bars b { color: var(--muted); font-weight: 600; }
@@ -38,14 +38,17 @@
 .skill i { position: absolute; inset: 0; border-radius: 50%; background: rgba(2,8,9,.74); transform-origin: bottom; transform: scaleY(0); }
 .skill:active { transform: scale(.93); }
 
-.choice-tray { position: absolute; z-index: 25; top: max(76px, calc(env(safe-area-inset-top) + 68px)); left: 50%; width: min(620px, 82vw); padding: 11px; transform: translateX(-50%); border: 1px solid var(--line); background: rgba(4,14,15,.91); backdrop-filter: blur(12px); }
-.choice-tray > p { margin: 0 0 8px; text-align: center; color: var(--gold); font-size: 9px; font-weight: 900; letter-spacing: .16em; }
-.choice-tray > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
-.choice-tray button.option { min-height: 48px; padding: 8px; border: 1px solid var(--line); background: rgba(255,255,255,.05); text-align: left; }
+.choice-stack { position: absolute; z-index: 25; top: max(168px, calc(env(safe-area-inset-top) + 160px)); right: max(10px, env(safe-area-inset-right)); width: min(292px, 34vw); display: grid; gap: 8px; pointer-events: none; }
+.choice-tray { position: relative; width: 100%; padding: 9px; border: 1px solid rgba(245,198,106,.4); background: rgba(4,14,15,.92); box-shadow: 0 14px 36px rgba(0,0,0,.4); backdrop-filter: blur(12px); pointer-events: auto; animation: choice-in .22s ease-out; }
+.choice-tray > p { margin: 0 0 7px; color: var(--gold); font-size: 8px; font-weight: 900; letter-spacing: .16em; }
+.choice-tray > p span { float: right; min-width: 20px; text-align: center; color: #071010; background: var(--gold); border-radius: 10px; }
+.choice-tray > div { display: grid; grid-template-columns: 1fr; gap: 5px; }
+.choice-tray button.option { min-height: 46px; padding: 5px 7px; display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 8px; border: 1px solid var(--line); background: linear-gradient(100deg, rgba(245,198,106,.12), rgba(255,255,255,.035)); text-align: left; cursor: pointer; }
+.choice-tray button.option:active { transform: scale(.98); border-color: var(--gold); }
+.choice-tray button.option > i { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid rgba(245,198,106,.55); border-radius: 50%; color: var(--gold); background: radial-gradient(circle, rgba(245,198,106,.2), rgba(4,14,15,.8)); font-style: normal; font-weight: 900; }
 .choice-tray button.option strong { display: block; font-size: 10px; }
-.choice-tray button.option span { color: var(--muted); font-size: 9px; }
-.choice-tray .chip { display: block; min-height: 32px; margin: 8px auto 0; }
+.choice-tray button.option small { display: block; margin-top: 2px; color: var(--muted); font-size: 8px; line-height: 1.2; }
+.choice-tray .chip { display: block; min-height: 28px; margin: 7px 0 0 auto; }
 .choice-tray--relic { border-color: rgba(189,145,255,.5); }
 .choice-tray--relic > p { color: var(--violet); }
-.controls.is-choice-open { opacity: .3; }
-.controls.is-choice-open .stick, .controls.is-choice-open .skill { pointer-events: none; }
+@keyframes choice-in { from { opacity: 0; transform: translateX(16px); } }

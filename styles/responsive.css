@@ -3,14 +3,14 @@
   .hero-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 64vh; overflow: auto; }
   .hero-card { min-height: 180px; }
   .hero-card img { height: 120px; }
-  #minimap { width: 132px; height: 58px; }
+  #minimap { width: 128px; height: 72px; }
   .player-bars { width: 260px; bottom: max(8px, env(safe-area-inset-bottom)); }
   .stick { width: 108px; height: 108px; }
   .stick--aim { width: 108px; height: 108px; }
   .action-cluster { width: 210px; height: 140px; }
   #skill-1 { left: 22px; bottom: 62px; }
   .skill { width: 58px; height: 58px; }
-  .choice-tray { width: min(550px, 76vw); }
+  .choice-stack { width: min(280px, 54vw); top: 148px; }
 }
 
 @media (orientation: portrait) and (max-width: 760px) {
@@ -29,10 +29,15 @@
   .stick, .stick--aim { width: 96px; height: 96px; }
   .action-cluster { height: 125px; }
   .player-bars { width: 240px; }
-  .choice-tray { top: 54px; width: min(520px, 72vw); padding: 8px; }
-  .choice-tray > div { gap: 5px; }
-  .choice-tray button.option { min-height: 40px; padding: 6px; }
-  .choice-tray .chip { margin-top: 5px; }
+  .choice-stack { top: 72px; width: min(330px, 40vw); max-height: calc(100vh - 220px); overflow-y: auto; scrollbar-width: thin; }
+  .choice-tray { padding: 7px; }
+  .choice-tray > p { margin-bottom: 4px; }
+  .choice-tray > div { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+  .choice-tray button.option { min-width: 0; min-height: 42px; padding: 4px; grid-template-columns: 24px minmax(0, 1fr); gap: 4px; }
+  .choice-tray button.option > i { width: 24px; height: 24px; }
+  .choice-tray button.option strong { overflow: hidden; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+  .choice-tray button.option small { display: none; }
+  .choice-tray .chip { min-height: 22px; margin-top: 4px; padding: 4px 7px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
