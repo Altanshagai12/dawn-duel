@@ -11,6 +11,7 @@ export class LocalSession {
     addPlayer(this.world, 'local', 'You');
     addPlayer(this.world, 'bot', 'Night Rival');
     applyCommand(this.world, 'bot', 'select_hero', { hero: 'scarlett' });
+    this.world.players.bot.ready = true;
     this.botMemory = {};
     this.listeners = new Set();
     this.last = performance.now();
@@ -39,7 +40,14 @@ export class LocalSession {
     for (const listener of this.listeners) listener(snapshot);
   }
 
-  command(type, data = {}) { return applyCommand(this.world, 'local', type, data); }
+  command(type, data = {}) {
+    const applied = applyCommand(this.world, 'local', type, data);
+    if (type === 'select_hero' && applied) {
+      this.world.players.bot.ready = true;
+      applyCommand(this.world, 'local', 'start_match');
+    }
+    return applied;
+  }
   sendInput(data) { return this.command('input', data); }
   stop() { clearInterval(this.timer); this.listeners.clear(); }
 }

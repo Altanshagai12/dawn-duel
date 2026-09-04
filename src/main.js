@@ -63,6 +63,7 @@ ui.on('hero', hero => {
   session?.command('select_hero', { hero });
 });
 ui.on('command', (type, data) => session?.command(type, data));
+ui.on('lobby', (type, data) => session?.command(type, data));
 ui.on('retry', () => {
   ui.setNetwork('network', 'connecting');
   void platform.retry().catch(error => {

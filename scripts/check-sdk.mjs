@@ -26,4 +26,4 @@ if (main.includes('player?.offer') || main.includes('player?.relicOffer')) {
 if (main.includes('spiritUntil')) {
   throw new Error('Wounded spirits must retain movement input during their slowed return');
 }
-console.log('[check] Usion SDK and hosted multiplayer contract verified');
+console.log('[check] Usion SDK and direct authoritative multiplayer contract verified');

@@ -2,7 +2,7 @@ import { MATCH } from './config.js';
 import { filterSnapshot } from './fog.js';
 import { applyCommand } from './inputs.js';
 import { reconnectPlayer, stepWorld } from './sim.js';
-import { addPlayer, createWorld, removePlayer } from './world.js';
+import { addPlayer, createWorld, establishHost, removePlayer } from './world.js';
 
 export const config = {
   profile: 'realtime',
@@ -25,11 +25,16 @@ export function init(room) {
 
 export function onJoin(room, player) {
   const world = room.state.world;
+  if (player.hostId && !establishHost(world, player.hostId)) {
+    room.send(player.id, 'duel_error', { code: 'HOST_MISMATCH' });
+    return;
+  }
   const joined = reconnectPlayer(world, player.id, player.name) || addPlayer(world, player.id, player.name);
   if (!joined) {
     room.send(player.id, 'duel_error', { code: 'ROOM_FULL' });
     return;
   }
+  if (player.hostId) establishHost(world, player.hostId);
   room.send(player.id, 'duel_snapshot', filterSnapshot(world, player.id));
 }
 

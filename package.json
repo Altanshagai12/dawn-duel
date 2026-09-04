@@ -5,19 +5,23 @@
   "type": "module",
   "description": "A symmetric 1v1 midlane action game for Usion.",
   "scripts": {
-    "start": "node scripts/serve.mjs",
+    "start": "node server/production.js",
+    "dev:web": "node scripts/serve.mjs",
     "dev:multiplayer": "node scripts/dev-multiplayer.mjs",
     "smoke:multiplayer": "node scripts/smoke-multiplayer.mjs",
+    "smoke:direct": "node scripts/smoke-direct.mjs",
     "build:server": "node scripts/build-server.mjs",
     "test": "node --test tests/*.test.js",
-    "check": "npm run build:server && node scripts/check-assets.mjs && node scripts/check-sdk.mjs && npm test"
+    "check": "npm run build:server && node scripts/check-assets.mjs && node scripts/check-sdk.mjs && npm test && npm run smoke:direct"
   },
   "engines": {
     "node": ">=20"
   },
-  "devDependencies": {
-    "esbuild": "^0.25.9",
+  "dependencies": {
     "jose": "^6.1.0",
     "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.9"
   }
 }

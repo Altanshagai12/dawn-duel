@@ -78,8 +78,7 @@ var MATCH = Object.freeze({
   dawnfallPressureDeadband: 100,
   reconnectPauseMs: 900,
   reconnectResumeMs: 3e3,
-  reconnectForfeitMs: 15e3,
-  selectionSeconds: 20
+  reconnectForfeitMs: 15e3
 });
 var PLAYER = Object.freeze({
   hp: 1500,
@@ -311,7 +310,6 @@ function createWorld(seed = 20260904) {
     roomNow: 0,
     matchTime: 0,
     countdown: MATCH.countdownSeconds,
-    selectionDeadline: 0,
     winnerTeam: null,
     finishReason: null,
     ended: false,
@@ -326,6 +324,7 @@ function createWorld(seed = 20260904) {
     xpLevelSnapshot: null,
     players: {},
     playerOrder: [],
+    hostId: null,
     minions: [],
     projectiles: [],
     clones: [],
@@ -360,6 +359,7 @@ function addPlayer(world, id, name = "Player") {
     name: String(name || "Player").slice(0, 24),
     team,
     hero: null,
+    ready: false,
     x: spawn.x,
     y: spawn.y,
     radius: PLAYER.radius,
@@ -411,13 +411,32 @@ function addPlayer(world, id, name = "Player") {
   };
   world.players[player.id] = player;
   world.playerOrder.push(player.id);
+  if (!world.hostId) world.hostId = player.id;
   return player;
+}
+function establishHost(world, hostId) {
+  const trustedHostId = String(hostId || "").slice(0, 80);
+  if (!trustedHostId || world.hostId && world.hostId !== trustedHostId) return false;
+  world.hostId = trustedHostId;
+  world.playerOrder.sort((left, right) => {
+    if (left === trustedHostId) return -1;
+    if (right === trustedHostId) return 1;
+    return 0;
+  });
+  world.playerOrder.forEach((id, team) => {
+    const player = world.players[id];
+    if (!player || player.team === team) return;
+    player.team = team;
+    resetPlayerAtFountain(player);
+  });
+  return true;
 }
 function removePlayer(world, id) {
   const player = world.players[id];
   if (!player) return;
   player.connected = false;
   player.disconnectedAt = world.roomNow;
+  if (world.phase === "select") player.ready = false;
 }
 function resetPlayerAtFountain(player) {
   const spawn = spawnPoint(player.team);
@@ -493,7 +512,9 @@ function playerSummary(world, player, visible, viewerId) {
     name: player.name,
     team: player.team,
     hero: player.id === viewerId || world.phase !== "select" ? player.hero : null,
-    ready: Boolean(player.hero),
+    selected: Boolean(player.hero),
+    ready: Boolean(player.ready),
+    host: player.id === world.hostId,
     connected: player.connected,
     level: player.level,
     kills: player.kills,
@@ -733,6 +754,21 @@ function selectHero(world, playerId, heroId) {
   const player = world.players[playerId];
   if (!player || world.phase !== "select" || !isHeroId(heroId)) return false;
   player.hero = heroId;
+  player.ready = false;
+  return true;
+}
+function setReady(world, playerId, ready = true) {
+  const player = world.players[playerId];
+  if (!player || world.phase !== "select" || playerId === world.hostId || !player.hero || !player.connected) return false;
+  player.ready = ready === true;
+  return true;
+}
+function startMatch(world, playerId) {
+  if (world.phase !== "select" || playerId !== world.hostId || world.playerOrder.length !== 2) return false;
+  const players = world.playerOrder.map((id) => world.players[id]);
+  if (players.some((player) => !player?.connected || !player.hero)) return false;
+  if (players.some((player) => player.id !== world.hostId && !player.ready)) return false;
+  world.phase = "countdown";
   return true;
 }
 function applyInput(world, playerId, data) {
@@ -767,6 +803,8 @@ function applyCommand(world, playerId, type, data = {}) {
   if (!player) return false;
   if (type === "input") return applyInput(world, playerId, data);
   if (type === "select_hero") return selectHero(world, playerId, data.hero);
+  if (type === "ready") return setReady(world, playerId, data.ready !== false);
+  if (type === "start_match") return startMatch(world, playerId);
   if (type === "upgrade") return chooseUpgrade(world, player, data.id);
   if (type === "reroll") return rerollUpgrade(world, player);
   if (type === "relic") return chooseRelic(world, player, data.id);
@@ -1590,26 +1628,11 @@ function updatePlayers(world, dt) {
 }
 
 // server/sim.js
-function beginCountdown(world) {
-  if (world.phase !== "select") return;
-  world.phase = "countdown";
-  world.countdown = MATCH.countdownSeconds;
-}
-function updateSelection(world) {
-  if (world.playerOrder.length < 2) return;
-  if (!world.selectionDeadline) world.selectionDeadline = world.roomNow + MATCH.selectionSeconds;
-  if (world.roomNow >= world.selectionDeadline) {
-    world.playerOrder.forEach((id, index) => {
-      if (!world.players[id].hero) world.players[id].hero = HERO_IDS[index % HERO_IDS.length];
-    });
-  }
-  if (world.playerOrder.every((id) => world.players[id]?.hero)) beginCountdown(world);
-}
 function finishDisconnect(world, disconnected) {
   const winner = Object.values(world.players).find((player) => player.connected);
   world.phase = "finished";
-  world.winnerTeam = winner ? winner.team : 1 - disconnected.team;
-  world.finishReason = "forfeit";
+  world.winnerTeam = winner ? winner.team : null;
+  world.finishReason = winner ? "forfeit" : "abandoned";
 }
 function updateConnections(world) {
   const disconnected = Object.values(world.players).filter((player) => !player.connected);
@@ -1620,6 +1643,7 @@ function updateConnections(world) {
     }
     return;
   }
+  if (world.phase === "select") return;
   world.resumeAt = 0;
   const oldest = Math.max(...disconnected.map((player) => world.roomNow - player.disconnectedAt));
   if (oldest * 1e3 >= MATCH.reconnectPauseMs) world.paused = true;
@@ -1631,6 +1655,15 @@ function reconnectPlayer(world, id, name) {
   player.connected = true;
   player.disconnectedAt = null;
   if (name) player.name = String(name).slice(0, 24);
+  player.input.seq = -1;
+  player.input.moveX = 0;
+  player.input.moveY = 0;
+  player.input.attack = false;
+  player.input.skill1 = false;
+  player.input.skill2 = false;
+  player.input.queuedSkill1 = false;
+  player.input.queuedSkill2 = false;
+  player.inputFresh = false;
   if (world.paused && Object.values(world.players).every((other) => other.connected)) {
     world.resumeAt = world.roomNow + MATCH.reconnectResumeMs / 1e3;
   }
@@ -1675,10 +1708,7 @@ function stepWorld(world, dt) {
   if (world.phase === "finished") return;
   updateConnections(world);
   if (world.phase === "finished") return;
-  if (world.phase === "select") {
-    updateSelection(world);
-    return;
-  }
+  if (world.phase === "select") return;
   if (world.paused) return;
   if (world.phase === "countdown") {
     world.countdown = Math.max(0, world.countdown - step);
@@ -1728,11 +1758,16 @@ function init(room) {
 }
 function onJoin(room, player) {
   const world = room.state.world;
+  if (player.hostId && !establishHost(world, player.hostId)) {
+    room.send(player.id, "duel_error", { code: "HOST_MISMATCH" });
+    return;
+  }
   const joined = reconnectPlayer(world, player.id, player.name) || addPlayer(world, player.id, player.name);
   if (!joined) {
     room.send(player.id, "duel_error", { code: "ROOM_FULL" });
     return;
   }
+  if (player.hostId) establishHost(world, player.hostId);
   room.send(player.id, "duel_snapshot", filterSnapshot(world, player.id));
 }
 function onLeave(room, player) {

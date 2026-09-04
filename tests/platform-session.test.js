@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PlatformSession, selectLaunchSession } from '../src/sessions/PlatformSession.js';
 
-test('hosted room assignment relies on the SDK-owned connect and join', () => {
+test('room assignment relies on the SDK-owned direct connect and join', () => {
   const handlers = {};
   let directCalls = 0;
   const handler = name => callback => { handlers[name] = callback; return () => {}; };
@@ -49,6 +49,34 @@ test('hero selection waits for join and is acknowledged by the authoritative sna
   handlers.realtime({ event: 'duel_snapshot', data: { you: 'p1', players: { p1: { hero: 'hina' } } } });
   handlers.reconnected({});
   assert.equal(sent.length, 1);
+  delete global.window;
+});
+
+test('join flushes queued lobby state without trusting a client roster', () => {
+  const handlers = {};
+  const sent = [];
+  const handler = name => callback => { handlers[name] = callback; return () => {}; };
+  global.window = {
+    parent: {},
+    Usion: {
+      config: { playerIds: ['host', 'guest'] },
+      user: { getId: () => 'guest' },
+      game: {
+        onRealtime: handler('realtime'), onRoomAssigned: handler('roomAssigned'), onJoined: handler('joined'),
+        onPlayerJoined: handler('playerJoined'), onPlayerLeft: handler('playerLeft'), onConnectionState: handler('connectionState'),
+        onDisconnect: handler('disconnect'), onReconnected: handler('reconnected'), onConnectionError: handler('connectionError'),
+        onNetworkQuality: handler('networkQuality'), onError: handler('error'), realtime: (...args) => sent.push(args),
+      },
+    },
+  };
+  const session = new PlatformSession();
+  session.command('select_hero', { hero: 'hina' });
+  session.command('ready', { ready: true });
+  handlers.joined({ player_ids: ['guest'] });
+  assert.deepEqual(sent, [
+    ['select_hero', { hero: 'hina' }],
+    ['ready', { ready: true }],
+  ]);
   delete global.window;
 });
 

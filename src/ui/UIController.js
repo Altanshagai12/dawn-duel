@@ -18,6 +18,7 @@ export class UIController {
     this.callbacks = {};
     $('#language').addEventListener('click', () => this.setLanguage(this.language === 'mn' ? 'en' : 'mn'));
     $('#draft-retry').addEventListener('click', () => this.callbacks.retry?.());
+    $('#draft-action').addEventListener('click', () => this.handleLobbyAction());
     $('#reroll').addEventListener('click', () => this.callbacks.command?.('reroll'));
     $('#practice-again').addEventListener('click', () => location.reload());
     this.renderHeroes();
@@ -48,7 +49,7 @@ export class UIController {
     $('#practice-again').textContent = t.again;
     $('#result-hint').textContent = t.hint;
     $('#language').textContent = this.language === 'mn' ? 'EN' : 'MN';
-    $('#draft-auto').textContent = t.autoStart;
+    $('#draft-auto').textContent = t.lobbyRule;
     $('#draft-retry').textContent = t.retry;
     this.updateDraft(this.lastDraft);
   }
@@ -100,6 +101,13 @@ export class UIController {
     this.updateDraft(this.lastDraft);
   }
 
+  handleLobbyAction() {
+    const you = this.lastDraft?.players?.[this.lastDraft?.you];
+    if (!you || this.mode !== 'network') return;
+    if (you.host) this.callbacks.lobby?.('start_match', {});
+    else this.callbacks.lobby?.('ready', { ready: !you.ready });
+  }
+
   updateDraft(snapshot) {
     if (snapshot) this.lastDraft = snapshot;
     const t = this.t();
@@ -107,15 +115,16 @@ export class UIController {
     const you = this.lastDraft?.players?.[this.lastDraft?.you];
     const rival = players.find(player => player.id !== this.lastDraft?.you);
     const rivalPresent = Boolean(rival && rival.connected !== false);
-    const selected = Boolean(you?.ready || you?.hero);
+    const selected = Boolean(you?.selected || you?.hero);
     const connection = $('#draft-connection');
     const connected = this.mode !== 'network' || this.networkState === 'ready';
     connection.className = `draft-connection ${connected ? 'online' : 'poor'}`;
     connection.querySelector('b').textContent = this.mode === 'network'
       ? (connected ? t.roomConnected : t.roomConnecting) : t.solo;
-    const rivalState = rivalPresent ? (rival.ready ? t.ready : t.pick) : t.notJoined;
+    const playerState = player => player?.ready ? t.ready : player?.selected || player?.hero ? t.picked : t.pick;
+    const rivalState = rivalPresent ? playerState(rival) : t.notJoined;
     $('#draft-roster').textContent = this.mode === 'network'
-      ? `${t.you} · ${selected ? t.ready : t.pick}   VS   ${t.rival} · ${rivalState}`
+      ? `${t.you}${you?.host ? ` · ${t.host}` : ''} · ${playerState(you)}   VS   ${t.rival}${rival?.host ? ` · ${t.host}` : ''} · ${rivalState}`
       : `${t.you} · ${selected ? t.ready : t.pick}   VS   BOT · ${t.ready}`;
     let status = t.waiting;
     if (this.mode !== 'network') status = selected ? t.practiceStart : t.practicePick;
@@ -123,9 +132,21 @@ export class UIController {
     else if (!rival) status = selected ? t.inviteWait : (this.currentHero ? t.locking : t.waiting);
     else if (!rivalPresent) status = t.rivalReconnect;
     else if (!selected) status = this.currentHero ? t.locking : t.rivalJoined;
-    else if (!rival?.ready) status = t.rivalWait;
-    else status = t.bothReady;
+    else if (you?.host) status = rival.ready ? t.hostStartPrompt : t.hostWait;
+    else status = you?.ready ? t.guestWait : t.guestReadyPrompt;
     $('#select-status').textContent = status;
+
+    const action = $('#draft-action');
+    const networkLobby = this.mode === 'network';
+    action.classList.toggle('is-hidden', !networkLobby);
+    action.classList.toggle('is-ready', Boolean(!you?.host && you?.ready));
+    if (you?.host) {
+      action.textContent = t.hostStart;
+      action.disabled = !connected || !selected || !rivalPresent || !rival?.ready;
+    } else {
+      action.textContent = you?.ready ? t.cancelReady : t.readyUp;
+      action.disabled = !connected || !selected || !rivalPresent;
+    }
   }
 
   update(snapshot) {

@@ -2,34 +2,16 @@ import { MATCH } from './config.js';
 import { updateCamps } from './camps.js';
 import { cleanupDead, updateBurns } from './combat.js';
 import { updateEffects } from './effects.js';
-import { HERO_IDS } from './heroes.js';
 import { updateStructures, removeInvalidTargets, spawnWave, updateMinions } from './lane.js';
 import { updatePlayers } from './players.js';
 import { updateOffers } from './progression.js';
 import { updateProjectiles } from './projectiles.js';
 
-function beginCountdown(world) {
-  if (world.phase !== 'select') return;
-  world.phase = 'countdown';
-  world.countdown = MATCH.countdownSeconds;
-}
-
-function updateSelection(world) {
-  if (world.playerOrder.length < 2) return;
-  if (!world.selectionDeadline) world.selectionDeadline = world.roomNow + MATCH.selectionSeconds;
-  if (world.roomNow >= world.selectionDeadline) {
-    world.playerOrder.forEach((id, index) => {
-      if (!world.players[id].hero) world.players[id].hero = HERO_IDS[index % HERO_IDS.length];
-    });
-  }
-  if (world.playerOrder.every(id => world.players[id]?.hero)) beginCountdown(world);
-}
-
 function finishDisconnect(world, disconnected) {
   const winner = Object.values(world.players).find(player => player.connected);
   world.phase = 'finished';
-  world.winnerTeam = winner ? winner.team : 1 - disconnected.team;
-  world.finishReason = 'forfeit';
+  world.winnerTeam = winner ? winner.team : null;
+  world.finishReason = winner ? 'forfeit' : 'abandoned';
 }
 
 function updateConnections(world) {
@@ -41,6 +23,7 @@ function updateConnections(world) {
     }
     return;
   }
+  if (world.phase === 'select') return;
   world.resumeAt = 0;
   const oldest = Math.max(...disconnected.map(player => world.roomNow - player.disconnectedAt));
   if (oldest * 1000 >= MATCH.reconnectPauseMs) world.paused = true;
@@ -53,6 +36,15 @@ export function reconnectPlayer(world, id, name) {
   player.connected = true;
   player.disconnectedAt = null;
   if (name) player.name = String(name).slice(0, 24);
+  player.input.seq = -1;
+  player.input.moveX = 0;
+  player.input.moveY = 0;
+  player.input.attack = false;
+  player.input.skill1 = false;
+  player.input.skill2 = false;
+  player.input.queuedSkill1 = false;
+  player.input.queuedSkill2 = false;
+  player.inputFresh = false;
   if (world.paused && Object.values(world.players).every(other => other.connected)) {
     world.resumeAt = world.roomNow + MATCH.reconnectResumeMs / 1000;
   }
@@ -106,10 +98,7 @@ export function stepWorld(world, dt) {
   if (world.phase === 'finished') return;
   updateConnections(world);
   if (world.phase === 'finished') return;
-  if (world.phase === 'select') {
-    updateSelection(world);
-    return;
-  }
+  if (world.phase === 'select') return;
   if (world.paused) return;
   if (world.phase === 'countdown') {
     world.countdown = Math.max(0, world.countdown - step);

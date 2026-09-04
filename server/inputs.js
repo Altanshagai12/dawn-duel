@@ -6,6 +6,23 @@ export function selectHero(world, playerId, heroId) {
   const player = world.players[playerId];
   if (!player || world.phase !== 'select' || !isHeroId(heroId)) return false;
   player.hero = heroId;
+  player.ready = false;
+  return true;
+}
+
+export function setReady(world, playerId, ready = true) {
+  const player = world.players[playerId];
+  if (!player || world.phase !== 'select' || playerId === world.hostId || !player.hero || !player.connected) return false;
+  player.ready = ready === true;
+  return true;
+}
+
+export function startMatch(world, playerId) {
+  if (world.phase !== 'select' || playerId !== world.hostId || world.playerOrder.length !== 2) return false;
+  const players = world.playerOrder.map(id => world.players[id]);
+  if (players.some(player => !player?.connected || !player.hero)) return false;
+  if (players.some(player => player.id !== world.hostId && !player.ready)) return false;
+  world.phase = 'countdown';
   return true;
 }
 
@@ -41,6 +58,8 @@ export function applyCommand(world, playerId, type, data = {}) {
   if (!player) return false;
   if (type === 'input') return applyInput(world, playerId, data);
   if (type === 'select_hero') return selectHero(world, playerId, data.hero);
+  if (type === 'ready') return setReady(world, playerId, data.ready !== false);
+  if (type === 'start_match') return startMatch(world, playerId);
   if (type === 'upgrade') return chooseUpgrade(world, player, data.id);
   if (type === 'reroll') return rerollUpgrade(world, player);
   if (type === 'relic') return chooseRelic(world, player, data.id);

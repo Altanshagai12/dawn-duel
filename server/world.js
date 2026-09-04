@@ -28,7 +28,6 @@ export function createWorld(seed = 20260904) {
     roomNow: 0,
     matchTime: 0,
     countdown: MATCH.countdownSeconds,
-    selectionDeadline: 0,
     winnerTeam: null,
     finishReason: null,
     ended: false,
@@ -43,6 +42,7 @@ export function createWorld(seed = 20260904) {
     xpLevelSnapshot: null,
     players: {},
     playerOrder: [],
+    hostId: null,
     minions: [],
     projectiles: [],
     clones: [],
@@ -78,6 +78,7 @@ export function addPlayer(world, id, name = 'Player') {
     name: String(name || 'Player').slice(0, 24),
     team,
     hero: null,
+    ready: false,
     x: spawn.x,
     y: spawn.y,
     radius: PLAYER.radius,
@@ -129,7 +130,26 @@ export function addPlayer(world, id, name = 'Player') {
   };
   world.players[player.id] = player;
   world.playerOrder.push(player.id);
+  if (!world.hostId) world.hostId = player.id;
   return player;
+}
+
+export function establishHost(world, hostId) {
+  const trustedHostId = String(hostId || '').slice(0, 80);
+  if (!trustedHostId || (world.hostId && world.hostId !== trustedHostId)) return false;
+  world.hostId = trustedHostId;
+  world.playerOrder.sort((left, right) => {
+    if (left === trustedHostId) return -1;
+    if (right === trustedHostId) return 1;
+    return 0;
+  });
+  world.playerOrder.forEach((id, team) => {
+    const player = world.players[id];
+    if (!player || player.team === team) return;
+    player.team = team;
+    resetPlayerAtFountain(player);
+  });
+  return true;
 }
 
 export function removePlayer(world, id) {
@@ -137,6 +157,7 @@ export function removePlayer(world, id) {
   if (!player) return;
   player.connected = false;
   player.disconnectedAt = world.roomNow;
+  if (world.phase === 'select') player.ready = false;
 }
 
 export function resetPlayerAtFountain(player) {

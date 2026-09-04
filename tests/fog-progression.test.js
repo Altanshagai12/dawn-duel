@@ -30,7 +30,8 @@ test('hero selection stays private until the draft closes', () => {
   world.phase = 'select';
   const snapshot = filterSnapshot(world, blue.id);
   assert.equal(snapshot.players[red.id].hero, null);
-  assert.equal(snapshot.players[red.id].ready, true);
+  assert.equal(snapshot.players[red.id].selected, true);
+  assert.equal(snapshot.players[red.id].ready, false);
   assert.equal(snapshot.players[red.id].connected, true);
   assert.equal(snapshot.players[blue.id].hero, 'shana');
 });

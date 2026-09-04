@@ -94,9 +94,23 @@ const blue = new SmokeClient('blue');
 let red = new SmokeClient('red');
 
 try {
-  await Promise.all([blue.connect(), red.connect()]);
+  await blue.connect();
+  await red.connect();
   blue.command('select_hero', { hero: 'hina' });
   red.command('select_hero', { hero: 'diamond' });
+
+  const lobby = await blue.waitFor(
+    snapshot => snapshot.match.phase === 'select'
+      && Object.values(snapshot.players).every(player => player.selected),
+    'Both hero selections were not visible in the lobby',
+  );
+  if (lobby.match.phase !== 'select') throw new Error('Hero picks auto-started the match');
+  red.command('ready', { ready: true });
+  await blue.waitFor(
+    snapshot => Object.values(snapshot.players).some(player => player.id !== snapshot.you && player.ready),
+    'Guest readiness did not reach the host',
+  );
+  blue.command('start_match');
 
   const live = await blue.waitFor(
     snapshot => snapshot.match.phase === 'playing',
@@ -106,7 +120,8 @@ try {
   if (!rival || rival.visible !== false || 'x' in rival || 'hp' in rival) {
     throw new Error('Fog-of-war leaked the remote rival state');
   }
-  console.log('[smoke] two clients joined, drafted, and reached live play');
+  console.log('[smoke] shared lobby required guest Ready and host Start');
+  console.log('[smoke] two clients drafted and reached live play');
   console.log('[smoke] per-player fog snapshot hides rival position and health');
 
   red.drop();

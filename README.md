@@ -1,7 +1,7 @@
 # Dawn Duel
 
 - **Live:** https://altanshagai12.github.io/dawn-duel/
-- **Usion service:** `dawn-duel-668063ce` (`hosted`, 2 players)
+- **Usion service:** `dawn-duel-668063ce` (`direct`, 2 players)
 - **Source:** https://github.com/Altanshagai12/dawn-duel
 
 Dawn Duel is a six-to-ten minute, 1v1, top-down midlane action game built for
@@ -10,11 +10,12 @@ attack baseline. Hero identity comes from two bounded skills, while match-only
 upgrades are deliberately capped to prevent runaway builds.
 
 To start multiplayer, the host uses Usion's top-bar Share action, the friend
-opens that exact invite card, and both players choose a hero. There is no host
-Start button: the authoritative room begins a three-second countdown as soon as
-both picks are confirmed. The draft footer shows joined/ready state explicitly.
+opens that exact invite card, and both players choose a hero. The guest confirms
+Ready, then the host starts the three-second countdown. The draft footer shows
+joined, selected, ready, and host state explicitly.
 
-The authoritative simulation runs as a Usion hosted-room bundle. Clients send
+The authoritative simulation runs on the game's dedicated direct-mode server,
+authenticated with Usion's short-lived signed room tokens. Clients send
 normalized input only; movement, hits, damage, XP, cooldowns, fog visibility,
 structures, camps, deaths, and the winner are decided by the hosted authority.
 Each player receives a different fog-filtered snapshot, so hidden enemy
@@ -46,10 +47,10 @@ coordinates never enter the opponent's iframe.
 
 ```powershell
 npm install
-npm start
+npm run dev:web
 ```
 
-Open `http://127.0.0.1:4175` for bot practice. For a real two-client hosted-room
+Open `http://127.0.0.1:4175` for bot practice. For a real two-client room-runtime
 test, keep the `usionthemobile` repository next to this repository and run:
 
 ```powershell
@@ -65,7 +66,7 @@ Then open `http://127.0.0.1:4176/?player=blue` and
 npm run check
 ```
 
-The suite rebuilds the single-file hosted bundle, validates every shipped
+The suite rebuilds the portable server bundle, validates every shipped
 asset and SDK call, then checks deterministic simulation, combat caps, waves,
 structures, XP/upgrades, camps/relics, Wounded Spirit behavior, fog payload
 security, input validation, and hero symmetry.
@@ -81,8 +82,15 @@ solo play remains bot practice and can be promoted by the host's own Share
 button through `Usion.game.onRoomAssigned`. The game does not implement room
 codes, matchmaking, invite, wager, or payment UI.
 
-Production registration uses `connection_mode: hosted`, two players, and the
-deployed `server.bundle.js`; no Railway service is required.
+Production registration uses `connection_mode: direct`, two players, and the
+dedicated `/ws` server deployed from this repository. The server validates Usion
+RS256 access tokens against the platform JWKS and runs as exactly one replica so
+room state stays authoritative. The signed `host_id` fixes host/team ownership
+even when the guest connects first. Match state remains reserved through a
+15-second simultaneous network drop, and bounded frames plus per-player rate
+limits protect the runtime. Result delivery retries with one stable idempotency
+key and a persistent Railway volume-backed outbox; a genuine draw closes the
+room as a no-contest without recording two false losses.
 
 ## Assets
 

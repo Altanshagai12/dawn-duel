@@ -1,0 +1,9 @@
+node_modules
+.git
+.github
+assets
+src
+styles
+tests
+scripts
+server.bundle.js

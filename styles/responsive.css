@@ -12,6 +12,8 @@
   .skill { width: 58px; height: 58px; }
   .choice-stack { width: min(280px, 54vw); top: 148px; }
   .draft-meta { align-items: flex-start; flex-direction: column; gap: 5px; }
+  .draft-actions { align-items: stretch; flex-direction: column; }
+  .draft-action { width: 100%; }
 }
 
 @media (orientation: portrait) and (max-width: 760px) {
@@ -27,6 +29,8 @@
   .hero-card { min-height: 145px; }
   .hero-card img { height: 105px; }
   .hero-card span { display: none; }
+  .draft-actions { flex-direction: row; align-items: center; }
+  .draft-action { width: auto; min-width: 150px; min-height: 42px; }
   .stick, .stick--aim { width: 96px; height: 96px; }
   .action-cluster { height: 125px; }
   .player-bars { width: 240px; }

@@ -24,6 +24,16 @@ test('disconnect pauses after grace, reconnect resumes after countdown', () => {
   assert.equal(world.paused, false);
 });
 
+test('a fresh client input sequence is accepted after reconnect', () => {
+  const { world, red } = playingWorld();
+  assert.equal(applyInput(world, red.id, { seq: 500, moveX: 0, moveY: 0 }), true);
+  removePlayer(world, red.id);
+  reconnectPlayer(world, red.id, red.name);
+  assert.equal(applyInput(world, red.id, { seq: 1, moveX: -1, moveY: 0 }), true);
+  assert.equal(red.input.seq, 1);
+  assert.equal(red.input.moveX, -1);
+});
+
 test('disconnect becomes a forfeit after fifteen seconds', () => {
   const { world, red } = playingWorld();
   removePlayer(world, red.id);

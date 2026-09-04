@@ -48,7 +48,6 @@ export const MATCH = Object.freeze({
   reconnectPauseMs: 900,
   reconnectResumeMs: 3000,
   reconnectForfeitMs: 15000,
-  selectionSeconds: 20,
 });
 
 export const PLAYER = Object.freeze({

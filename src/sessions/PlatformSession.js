@@ -15,6 +15,7 @@ export class PlatformSession {
     this.roomId = null;
     this.status = 'idle';
     this.pendingHero = null;
+    this.pendingReady = null;
     this.connectPromise = null;
     this.unsubscribers = [];
     this.registerHandlers();
@@ -31,6 +32,7 @@ export class PlatformSession {
       if (payload?.event === 'duel_snapshot' && payload.data) {
         const you = payload.data.players?.[payload.data.you];
         if (you?.hero === this.pendingHero) this.pendingHero = null;
+        if (you?.ready === this.pendingReady) this.pendingReady = null;
         this.emit(payload.data);
       }
       if (payload?.event === 'duel_error') this.setStatus('error', payload.data);
@@ -40,7 +42,7 @@ export class PlatformSession {
       this.roomId = data?.roomId || this.roomId;
       for (const listener of this.roomListeners) listener(data);
     }));
-    this.unsubscribers.push(game.onJoined(() => this.markReady()));
+    this.unsubscribers.push(game.onJoined(data => this.markReady(data)));
     this.unsubscribers.push(game.onPlayerJoined(() => this.setStatus(this.connected ? 'ready' : 'connecting')));
     this.unsubscribers.push(game.onPlayerLeft(() => this.setStatus(this.connected ? 'ready' : 'poor')));
     this.unsubscribers.push(game.onConnectionState(state => {
@@ -87,13 +89,15 @@ export class PlatformSession {
     this.status = status;
     for (const listener of this.statusListeners) listener(status, detail);
   }
-  markReady() {
+  markReady(data) {
     this.connected = true;
     this.setStatus('ready');
     if (this.pendingHero) window.Usion.game.realtime('select_hero', { hero: this.pendingHero });
+    if (this.pendingReady !== null) window.Usion.game.realtime('ready', { ready: this.pendingReady });
   }
   command(type, data = {}) {
     if (type === 'select_hero') this.pendingHero = data.hero || null;
+    if (type === 'ready') this.pendingReady = data.ready !== false;
     if (!this.connected) return false;
     window.Usion.game.realtime(type, data);
     return true;
@@ -104,5 +108,6 @@ export class PlatformSession {
     if (this.connected) window.Usion.game.disconnect();
     this.connected = false;
     this.pendingHero = null;
+    this.pendingReady = null;
   }
 }
