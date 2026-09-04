@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="mn">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#081414">
+  <title>Dawn Duel</title>
+  <link rel="stylesheet" href="./styles/base.css">
+  <link rel="stylesheet" href="./styles/hud.css">
+  <link rel="stylesheet" href="./styles/responsive.css">
+</head>
+<body>
+  <main id="app">
+    <div id="game" aria-label="Dawn Duel battlefield"></div>
+
+    <section id="boot-screen" class="screen screen--active">
+      <div class="brand-mark">DD</div>
+      <p class="eyebrow">USION ORIGINAL</p>
+      <h1>DAWN <span>DUEL</span></h1>
+      <p id="boot-copy">Тулааны талбарыг бэлдэж байна…</p>
+      <div class="loader"><i></i></div>
+    </section>
+
+    <section id="hero-screen" class="screen" aria-labelledby="hero-title">
+      <div class="panel select-panel">
+        <header>
+          <div><p class="eyebrow">CHOOSE YOUR DAWN</p><h2 id="hero-title">Баатраа сонго</h2></div>
+          <button id="language" class="chip" type="button">EN</button>
+        </header>
+        <div id="hero-grid" class="hero-grid"></div>
+        <p id="select-status" class="select-status">Өрсөлдөгч хүлээж байна</p>
+      </div>
+    </section>
+
+    <div id="hud" class="hud is-hidden">
+      <div class="topbar">
+        <div class="team-status team-status--blue"><span id="blue-label">YOU</span><b id="blue-level">LV 1</b><i><em id="blue-core"></em></i></div>
+        <div class="match-clock"><strong id="clock">00:00</strong><small id="wave">WAVE 0</small></div>
+        <div class="team-status team-status--red"><span id="red-label">RIVAL</span><b id="red-level">LV 1</b><i><em id="red-core"></em></i></div>
+      </div>
+      <div id="network" class="network"><i></i><span>SOLO</span></div>
+      <canvas id="minimap" width="220" height="96" aria-label="Minimap"></canvas>
+      <div id="player-bars" class="player-bars">
+        <div><span id="hero-name">SHANA</span><b id="hp-copy">1500 / 1500</b></div>
+        <i><em id="hp-bar"></em><u id="shield-bar"></u></i>
+        <i class="xp"><em id="xp-bar"></em></i>
+      </div>
+      <div id="announcement" class="announcement"></div>
+    </div>
+
+    <section id="upgrade" class="choice-tray is-hidden" aria-live="polite">
+      <p id="upgrade-title">DAWN UPGRADE <span id="upgrade-time">7</span></p>
+      <div id="upgrade-options"></div>
+      <button id="reroll" class="chip is-hidden" type="button">↻ REROLL</button>
+    </section>
+
+    <section id="relic" class="choice-tray choice-tray--relic is-hidden" aria-live="polite">
+      <p id="relic-title">GUARDIAN RELIC</p>
+      <div id="relic-options"></div>
+    </section>
+
+    <div id="controls" class="controls is-hidden">
+      <div id="move-stick" class="stick"><i></i><span>MOVE</span></div>
+      <div class="action-cluster">
+        <button id="skill-1" class="skill" type="button"><b>Q</b><span id="skill-1-name">SKILL</span><i></i></button>
+        <button id="skill-2" class="skill" type="button"><b>E</b><span id="skill-2-name">SKILL</span><i></i></button>
+        <div id="aim-stick" class="stick stick--aim"><i></i><span>FIRE</span></div>
+      </div>
+    </div>
+
+    <section id="result-screen" class="screen">
+      <div class="panel result-panel">
+        <p class="eyebrow">MATCH COMPLETE</p>
+        <h2 id="result-title">VICTORY</h2>
+        <p id="result-stats"></p>
+        <button id="practice-again" class="primary" type="button">Дахин бэлтгэл хийх</button>
+        <p id="result-hint">Usion-ийн Share товчоор найзаа урьж бодит тулаан эхлүүлээрэй.</p>
+      </div>
+    </section>
+
+    <div id="rotate-hint"><span>↻</span><b>Landscape байрлалд тоглоход хамгийн тохиромжтой</b></div>
+    <div id="toast" role="status"></div>
+  </main>
+  <script src="https://usions.com/vendor/phaser/4.2.1/phaser.min.js"></script>
+  <script src="https://usions.com/usion-sdk.js"></script>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

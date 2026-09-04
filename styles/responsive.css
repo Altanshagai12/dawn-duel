@@ -1,0 +1,40 @@
+#rotate-hint { display: none; }
+@media (max-width: 760px) {
+  .hero-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 64vh; overflow: auto; }
+  .hero-card { min-height: 180px; }
+  .hero-card img { height: 120px; }
+  #minimap { width: 132px; height: 58px; }
+  .player-bars { width: 260px; bottom: max(8px, env(safe-area-inset-bottom)); }
+  .stick { width: 108px; height: 108px; }
+  .stick--aim { width: 108px; height: 108px; }
+  .action-cluster { width: 210px; height: 140px; }
+  #skill-1 { left: 22px; bottom: 62px; }
+  .skill { width: 58px; height: 58px; }
+  .choice-tray { width: min(550px, 76vw); }
+}
+
+@media (orientation: portrait) and (max-width: 760px) {
+  #rotate-hint { position: absolute; z-index: 100; inset: auto 16px max(14px, env(safe-area-inset-bottom)); display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px 14px; background: rgba(3,12,13,.94); border: 1px solid var(--line); font-size: 10px; pointer-events: none; }
+  #rotate-hint span { color: var(--gold); font-size: 20px; }
+  .topbar { transform: translateX(-50%) scale(.82); transform-origin: top; }
+  .controls { opacity: .92; }
+  .player-bars { width: 44vw; }
+}
+
+@media (max-height: 470px) {
+  .select-panel { max-height: 94vh; overflow: auto; }
+  .hero-card { min-height: 145px; }
+  .hero-card img { height: 105px; }
+  .hero-card span { display: none; }
+  .stick, .stick--aim { width: 96px; height: 96px; }
+  .action-cluster { height: 125px; }
+  .player-bars { width: 240px; }
+  .choice-tray { top: 54px; width: min(520px, 72vw); padding: 8px; }
+  .choice-tray > div { gap: 5px; }
+  .choice-tray button.option { min-height: 40px; padding: 6px; }
+  .choice-tray .chip { margin-top: 5px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
