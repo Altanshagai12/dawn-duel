@@ -130,7 +130,7 @@ try {
     'Reconnect timeout did not resolve as a forfeit',
     22_000,
   );
-  if (finished.match.finishReason !== 'forfeit' || finished.match.winnerTeam !== 0) {
+  if (finished.match.finishReason !== 'forfeit' || finished.match.winnerTeam !== live.team) {
     throw new Error('Forfeit resolved with the wrong result');
   }
   console.log('[smoke] 15-second reconnect timeout awarded the correct forfeit');

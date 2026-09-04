@@ -3,7 +3,7 @@ import { InputController } from './game/InputController.js';
 import { Feedback } from './game/Feedback.js';
 import { DevSession } from './sessions/DevSession.js';
 import { LocalSession } from './sessions/LocalSession.js';
-import { PlatformSession } from './sessions/PlatformSession.js';
+import { PlatformSession, selectLaunchSession } from './sessions/PlatformSession.js';
 import { UIController } from './ui/UIController.js';
 import { languageFromPlatform } from './ui/i18n.js';
 
@@ -63,10 +63,16 @@ ui.on('hero', hero => {
   session?.command('select_hero', { hero });
 });
 ui.on('command', (type, data) => session?.command(type, data));
+ui.on('retry', () => {
+  ui.setNetwork('network', 'connecting');
+  void platform.retry().catch(error => {
+    ui.setNetwork('network', 'poor');
+    ui.toast(error?.message || 'Connection failed');
+  });
+});
 platform.onStatus((status, error) => {
-  ui.setNetwork('network', status === 'ready' ? 'ready' : 'poor');
+  ui.setNetwork('network', status === 'ready' ? 'ready' : status === 'error' || status === 'poor' ? 'poor' : 'connecting');
   if (status === 'error') ui.toast(error?.message || 'Multiplayer connection failed');
-  if (status === 'ready' && selectedHero) platform.command('select_hero', { hero: selectedHero });
 });
 platform.onRoomAssigned(promoteToNetwork);
 
@@ -83,16 +89,20 @@ async function boot() {
   }
 
   ui.setLanguage(languageFromPlatform(launch.config));
-  attach(launch.session || (launch.multiplayer ? platform : new LocalSession()));
+  attach(selectLaunchSession(launch, platform, session, () => new LocalSession()));
   await waitForSurface();
   const gameBridge = createGameBridge();
   bridge = gameBridge.bridge;
   bridge.aim = (x, y) => input.pointAim(x, y, latestSnapshot?.players?.[latestSnapshot.you]);
   bridge.attack = active => { input.state.attack = active; };
   bridge.input = () => input.state;
-  await Promise.all([gameBridge.ready, launch.connection.catch(error => ui.toast(error?.message || 'Connection failed'))]);
+  await Promise.all([gameBridge.ready, launch.connection.catch(error => {
+    ui.setNetwork('network', 'poor');
+    ui.toast(error?.message || 'Connection failed');
+  })]);
   if (latestSnapshot) bridge.apply(latestSnapshot);
-  ui.ready(launch.multiplayer ? 'network' : 'solo');
+  const mode = session?.mode === 'network' ? 'network' : 'solo';
+  ui.ready(mode, mode === 'network' ? ui.networkState : 'solo');
   window.__DAWN_DUEL__ = { get session() { return session; }, ui, bridge, input };
 }
 

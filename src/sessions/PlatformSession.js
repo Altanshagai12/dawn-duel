@@ -1,3 +1,9 @@
+export function selectLaunchSession(launch, platform, current, createLocal) {
+  if (launch.session) return launch.session;
+  if (launch.multiplayer || platform.roomAssigned || current === platform) return platform;
+  return createLocal();
+}
+
 export class PlatformSession {
   constructor() {
     this.mode = 'network';
@@ -5,6 +11,10 @@ export class PlatformSession {
     this.statusListeners = new Set();
     this.roomListeners = new Set();
     this.connected = false;
+    this.roomAssigned = false;
+    this.roomId = null;
+    this.status = 'idle';
+    this.pendingHero = null;
     this.connectPromise = null;
     this.unsubscribers = [];
     this.registerHandlers();
@@ -18,21 +28,33 @@ export class PlatformSession {
     const game = window.Usion?.game;
     if (!game) return;
     this.unsubscribers.push(game.onRealtime(payload => {
-      if (payload?.event === 'duel_snapshot' && payload.data) this.emit(payload.data);
+      if (payload?.event === 'duel_snapshot' && payload.data) {
+        const you = payload.data.players?.[payload.data.you];
+        if (you?.hero === this.pendingHero) this.pendingHero = null;
+        this.emit(payload.data);
+      }
       if (payload?.event === 'duel_error') this.setStatus('error', payload.data);
     }));
     this.unsubscribers.push(game.onRoomAssigned(data => {
+      this.roomAssigned = true;
+      this.roomId = data?.roomId || this.roomId;
       for (const listener of this.roomListeners) listener(data);
-      void this.connect(data?.roomId).catch(error => this.setStatus('error', error));
     }));
-    this.unsubscribers.push(game.onJoined(() => { this.connected = true; this.setStatus('ready'); }));
+    this.unsubscribers.push(game.onJoined(() => this.markReady()));
     this.unsubscribers.push(game.onPlayerJoined(() => this.setStatus(this.connected ? 'ready' : 'connecting')));
-    this.unsubscribers.push(game.onPlayerLeft(() => this.setStatus('poor')));
-    this.unsubscribers.push(game.onConnectionState(state => this.setStatus(state === 'connected' || state === 'reconnected' ? 'ready' : state)));
+    this.unsubscribers.push(game.onPlayerLeft(() => this.setStatus(this.connected ? 'ready' : 'poor')));
+    this.unsubscribers.push(game.onConnectionState(state => {
+      const status = state === 'reconnected' || (state === 'connected' && this.connected) ? 'ready' : state;
+      this.setStatus(status);
+    }));
     this.unsubscribers.push(game.onDisconnect(() => { this.connected = false; this.setStatus('poor'); }));
-    this.unsubscribers.push(game.onReconnected(() => { this.connected = true; this.setStatus('ready'); }));
+    this.unsubscribers.push(game.onReconnected(() => this.markReady()));
     this.unsubscribers.push(game.onConnectionError(error => this.setStatus('error', error)));
-    this.unsubscribers.push(game.onNetworkQuality(data => { if (data?.quality === 'poor' || data?.quality === 'dead') this.setStatus('poor'); }));
+    this.unsubscribers.push(game.onError(error => this.setStatus('error', error)));
+    this.unsubscribers.push(game.onNetworkQuality(data => {
+      if (data?.quality === 'poor' || data?.quality === 'dead') this.setStatus('poor');
+      if ((data?.quality === 'fair' || data?.quality === 'good') && this.connected) this.setStatus('ready');
+    }));
   }
 
   async initialize() {
@@ -45,7 +67,9 @@ export class PlatformSession {
   }
 
   async connect(roomId) {
-    if (this.connected) return;
+    if (!roomId) throw new Error('No multiplayer room assigned');
+    this.roomId = roomId;
+    if (this.connected) { this.setStatus('ready'); return; }
     if (this.connectPromise) return this.connectPromise;
     this.setStatus('connecting');
     this.connectPromise = window.Usion.game.connectDirect({ roomId, protocolVersion: '2', autoReconnect: true })
@@ -53,16 +77,32 @@ export class PlatformSession {
     return this.connectPromise;
   }
 
+  retry() { return this.connect(this.roomId); }
+
   onSnapshot(listener) { this.listeners.add(listener); return () => this.listeners.delete(listener); }
   onStatus(listener) { this.statusListeners.add(listener); return () => this.statusListeners.delete(listener); }
   onRoomAssigned(listener) { this.roomListeners.add(listener); return () => this.roomListeners.delete(listener); }
   emit(snapshot) { for (const listener of this.listeners) listener(snapshot); }
-  setStatus(status, detail) { for (const listener of this.statusListeners) listener(status, detail); }
-  command(type, data = {}) { window.Usion.game.realtime(type, data); return true; }
+  setStatus(status, detail) {
+    this.status = status;
+    for (const listener of this.statusListeners) listener(status, detail);
+  }
+  markReady() {
+    this.connected = true;
+    this.setStatus('ready');
+    if (this.pendingHero) window.Usion.game.realtime('select_hero', { hero: this.pendingHero });
+  }
+  command(type, data = {}) {
+    if (type === 'select_hero') this.pendingHero = data.hero || null;
+    if (!this.connected) return false;
+    window.Usion.game.realtime(type, data);
+    return true;
+  }
   sendInput(data) { return this.command('input', data); }
   stop() {
     this.unsubscribers.splice(0).forEach(unsubscribe => unsubscribe?.());
     if (this.connected) window.Usion.game.disconnect();
     this.connected = false;
+    this.pendingHero = null;
   }
 }

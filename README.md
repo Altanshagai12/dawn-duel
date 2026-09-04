@@ -9,6 +9,11 @@ Usion. Both heroes begin with exactly 1,500 HP and the same movement/basic
 attack baseline. Hero identity comes from two bounded skills, while match-only
 upgrades are deliberately capped to prevent runaway builds.
 
+To start multiplayer, the host uses Usion's top-bar Share action, the friend
+opens that exact invite card, and both players choose a hero. There is no host
+Start button: the authoritative room begins a three-second countdown as soon as
+both picks are confirmed. The draft footer shows joined/ready state explicitly.
+
 The authoritative simulation runs as a Usion hosted-room bundle. Clients send
 normalized input only; movement, hits, damage, XP, cooldowns, fog visibility,
 structures, camps, deaths, and the winner are decided by the hosted authority.

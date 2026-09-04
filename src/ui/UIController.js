@@ -9,11 +9,15 @@ const pct = value => `${Math.round(clamp01(value) * 100)}%`;
 export class UIController {
   constructor(language = 'mn') {
     this.language = language;
+    this.mode = 'solo';
+    this.networkState = 'ready';
+    this.lastDraft = null;
     this.lastWave = 0;
     this.lastDawnfall = false;
     this.toastTimer = 0;
     this.callbacks = {};
     $('#language').addEventListener('click', () => this.setLanguage(this.language === 'mn' ? 'en' : 'mn'));
+    $('#draft-retry').addEventListener('click', () => this.callbacks.retry?.());
     $('#reroll').addEventListener('click', () => this.callbacks.command?.('reroll'));
     $('#practice-again').addEventListener('click', () => location.reload());
     this.renderHeroes();
@@ -44,6 +48,9 @@ export class UIController {
     $('#practice-again').textContent = t.again;
     $('#result-hint').textContent = t.hint;
     $('#language').textContent = this.language === 'mn' ? 'EN' : 'MN';
+    $('#draft-auto').textContent = t.autoStart;
+    $('#draft-retry').textContent = t.retry;
+    this.updateDraft(this.lastDraft);
   }
 
   renderHeroes() {
@@ -61,16 +68,16 @@ export class UIController {
     }
   }
 
-  ready(mode) {
+  ready(mode, state = mode === 'network' ? this.networkState : 'solo') {
     $('#boot-screen').classList.remove('screen--active');
     $('#hero-screen').classList.add('screen--active');
-    this.setNetwork(mode, mode === 'network' ? 'ready' : 'solo');
+    this.setNetwork(mode, state);
   }
 
   selectHero(hero) {
     this.currentHero = hero;
     document.querySelectorAll('.hero-card').forEach(card => card.classList.toggle('is-selected', card.dataset.hero === hero));
-    $('#select-status').textContent = this.t().selected;
+    this.updateDraft(this.lastDraft);
     const names = this.t().skills[hero];
     $('#skill-1-name').textContent = names[0];
     $('#skill-2-name').textContent = names[1];
@@ -83,10 +90,42 @@ export class UIController {
   }
 
   setNetwork(mode, state = 'ready') {
+    this.mode = mode;
+    this.networkState = state;
     const node = $('#network');
     node.className = `network ${state === 'ready' ? 'online' : state === 'poor' ? 'poor' : ''}`;
     node.querySelector('span').textContent = mode === 'network'
       ? (state === 'ready' ? this.t().live : this.t().reconnecting) : this.t().solo;
+    $('#draft-retry').classList.toggle('is-hidden', mode !== 'network' || state !== 'poor');
+    this.updateDraft(this.lastDraft);
+  }
+
+  updateDraft(snapshot) {
+    if (snapshot) this.lastDraft = snapshot;
+    const t = this.t();
+    const players = Object.values(this.lastDraft?.players || {});
+    const you = this.lastDraft?.players?.[this.lastDraft?.you];
+    const rival = players.find(player => player.id !== this.lastDraft?.you);
+    const rivalPresent = Boolean(rival && rival.connected !== false);
+    const selected = Boolean(you?.ready || you?.hero);
+    const connection = $('#draft-connection');
+    const connected = this.mode !== 'network' || this.networkState === 'ready';
+    connection.className = `draft-connection ${connected ? 'online' : 'poor'}`;
+    connection.querySelector('b').textContent = this.mode === 'network'
+      ? (connected ? t.roomConnected : t.roomConnecting) : t.solo;
+    const rivalState = rivalPresent ? (rival.ready ? t.ready : t.pick) : t.notJoined;
+    $('#draft-roster').textContent = this.mode === 'network'
+      ? `${t.you} · ${selected ? t.ready : t.pick}   VS   ${t.rival} · ${rivalState}`
+      : `${t.you} · ${selected ? t.ready : t.pick}   VS   BOT · ${t.ready}`;
+    let status = t.waiting;
+    if (this.mode !== 'network') status = selected ? t.practiceStart : t.practicePick;
+    else if (!connected) status = t.roomConnecting;
+    else if (!rival) status = selected ? t.inviteWait : (this.currentHero ? t.locking : t.waiting);
+    else if (!rivalPresent) status = t.rivalReconnect;
+    else if (!selected) status = this.currentHero ? t.locking : t.rivalJoined;
+    else if (!rival?.ready) status = t.rivalWait;
+    else status = t.bothReady;
+    $('#select-status').textContent = status;
   }
 
   update(snapshot) {
@@ -94,6 +133,7 @@ export class UIController {
     const you = snapshot.players[snapshot.you];
     const rival = Object.values(snapshot.players).find(player => player.id !== snapshot.you);
     if (!you) return;
+    this.updateDraft(snapshot);
     if (you.hero && you.hero !== this.currentHero) this.selectHero(you.hero);
     if (snapshot.match.phase !== 'select') this.showBattle();
     const seconds = Math.floor(snapshot.match.matchTime || 0);

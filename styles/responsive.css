@@ -11,6 +11,7 @@
   #skill-1 { left: 22px; bottom: 62px; }
   .skill { width: 58px; height: 58px; }
   .choice-stack { width: min(280px, 54vw); top: 148px; }
+  .draft-meta { align-items: flex-start; flex-direction: column; gap: 5px; }
 }
 
 @media (orientation: portrait) and (max-width: 760px) {

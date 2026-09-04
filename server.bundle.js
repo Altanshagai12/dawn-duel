@@ -493,6 +493,8 @@ function playerSummary(world, player, visible, viewerId) {
     name: player.name,
     team: player.team,
     hero: player.id === viewerId || world.phase !== "select" ? player.hero : null,
+    ready: Boolean(player.hero),
+    connected: player.connected,
     level: player.level,
     kills: player.kills,
     deaths: player.deaths,
