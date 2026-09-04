@@ -1,8 +1,8 @@
 # Dawn Duel
 
-**Live:** https://altanshagai12.github.io/dawn-duel/  
-**Usion service:** `dawn-duel-668063ce` (`hosted`, 2 players)  
-**Source:** https://github.com/Altanshagai12/dawn-duel
+- **Live:** https://altanshagai12.github.io/dawn-duel/
+- **Usion service:** `dawn-duel-668063ce` (`hosted`, 2 players)
+- **Source:** https://github.com/Altanshagai12/dawn-duel
 
 Dawn Duel is a six-to-ten minute, 1v1, top-down midlane action game built for
 Usion. Both heroes begin with exactly 1,500 HP and the same movement/basic
