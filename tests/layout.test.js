@@ -65,3 +65,9 @@ test('fogged buff objectives are omitted instead of rendered with a fake timer',
   assert.match(objectiveSource, /site\.visible === false[\s\S]*?setVisible\(false\)[\s\S]*?continue/);
   assert.match(minimapSource, /site\.visible === false\) continue/);
 });
+
+test('production loads one versioned client bundle so stale modules cannot mix', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /<script type="module" src="\.\/app\.v2\.js"><\/script>/);
+  assert.doesNotMatch(html, /src="\.\/src\/main\.js"/);
+});

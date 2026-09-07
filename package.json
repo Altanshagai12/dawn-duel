@@ -10,9 +10,10 @@
     "dev:multiplayer": "node scripts/dev-multiplayer.mjs",
     "smoke:multiplayer": "node scripts/smoke-multiplayer.mjs",
     "smoke:direct": "node scripts/smoke-direct.mjs",
+    "build:client": "node scripts/build-client.mjs",
     "build:server": "node scripts/build-server.mjs",
     "test": "node --test tests/*.test.js",
-    "check": "npm run build:server && node scripts/check-assets.mjs && node scripts/check-sdk.mjs && npm test && npm run smoke:direct"
+    "check": "npm run build:client && npm run build:server && node scripts/check-assets.mjs && node scripts/check-sdk.mjs && npm test && npm run smoke:direct"
   },
   "engines": {
     "node": ">=20"
