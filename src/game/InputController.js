@@ -1,11 +1,15 @@
+import { remapLandscapePointer } from '../ui/orientation.js';
+
 const clamp = value => Math.max(-1, Math.min(1, value));
 
 function bindStick(root, onMove, onRelease) {
   const knob = root.querySelector('i');
   const move = event => {
     const rect = root.getBoundingClientRect();
-    const dx = event.clientX - rect.left - rect.width / 2;
-    const dy = event.clientY - rect.top - rect.height / 2;
+    const rawX = event.clientX - rect.left - rect.width / 2;
+    const rawY = event.clientY - rect.top - rect.height / 2;
+    const rotated = document.documentElement.classList.contains('landscape-fallback');
+    const { x: dx, y: dy } = remapLandscapePointer(rawX, rawY, rotated);
     const radius = rect.width * 0.34;
     const distance = Math.hypot(dx, dy) || 1;
     const scale = Math.min(1, radius / distance);

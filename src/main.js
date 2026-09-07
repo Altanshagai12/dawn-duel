@@ -6,7 +6,9 @@ import { LocalSession } from './sessions/LocalSession.js';
 import { PlatformSession, selectLaunchSession } from './sessions/PlatformSession.js';
 import { UIController } from './ui/UIController.js';
 import { languageFromPlatform } from './ui/i18n.js';
+import { installLandscapeMode } from './ui/orientation.js';
 
+installLandscapeMode();
 let session;
 let unsubscribe;
 let selectedHero = null;
