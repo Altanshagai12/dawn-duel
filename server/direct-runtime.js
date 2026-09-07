@@ -215,7 +215,14 @@ export function createDirectRuntime(options) {
       session.rate = savedRate;
       authorized = true;
       for (const raw of buffered.splice(0)) handle(session, raw);
-    }).catch(() => rejectSocket(socket, 'INVALID_TOKEN', 'Access token verification failed', 4003));
+    }).catch(error => {
+      console.warn(JSON.stringify({
+        event: 'auth_rejected',
+        code: String(error?.code || error?.name || 'INVALID_TOKEN').slice(0, 80),
+        reason: String(error?.message || 'Access token verification failed').slice(0, 180),
+      }));
+      rejectSocket(socket, 'INVALID_TOKEN', 'Access token verification failed', 4003);
+    });
   }
 
   function update() {
