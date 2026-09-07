@@ -73,7 +73,7 @@ function playerSummary(world, player, visible, viewerId) {
     relicOffer: player.relicOffer,
     relic: player.relic,
     relicUntil: player.relicUntil,
-    surgeUntil: player.surgeUntil,
+    bossPowerUntil: player.bossPowerUntil,
     ranks: player.ranks,
     xp: player.xp,
   };
@@ -119,21 +119,6 @@ export function filterSnapshot(world, viewerId) {
     minions: world.minions.filter(filter),
     clones: world.clones.filter(filter),
     camps: world.camps.filter(camp => camp.alive && isPointVisible(world, team, camp)),
-    buffSites: world.buffSites.map(site => {
-      const visible = isPointVisible(world, team, { ...site, radius: MAP.buffPocketRadius });
-      return {
-        id: site.id,
-        kind: site.kind,
-        x: site.x,
-        y: site.y,
-        color: site.color,
-        visible,
-        available: visible ? site.available : null,
-        spawnAt: visible ? site.spawnAt : null,
-        captureTeam: visible ? site.captureTeam : null,
-        captureProgress: visible ? site.captureProgress : 0,
-      };
-    }),
     structures: world.structures,
     projectiles: world.projectiles
       .filter(projectile => isPointVisible(world, team, projectile))

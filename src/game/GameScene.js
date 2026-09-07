@@ -1,9 +1,8 @@
 import { EntityViews } from './EntityViews.js';
 import { FogView } from './FogView.js';
-import { ObjectiveViews } from './ObjectiveViews.js';
 import { cameraZoomForDisplay, displayMetricsForElement } from './display.js';
 import { MAP } from '../../server/config.js';
-import { campApproach } from '../../server/geometry.js';
+import { campGeometry } from '../../server/geometry.js';
 
 const SHEETS = {
   shana: [181, 181, './assets/heroes/shana.webp'],
@@ -22,7 +21,7 @@ export class GameScene extends Phaser.Scene {
 
   preload() {
     this.load.on('loaderror', file => console.error('[dawn-duel]', { event: 'asset_load_failed', key: file?.key, url: file?.url }));
-    this.load.image('battlefield', './assets/map/dawnfall-lane-v2.webp');
+    this.load.image('battlefield', './assets/map/dawnfall-lane-v3.png');
     this.load.image('tower', './assets/structures/tower.webp');
     this.load.image('core', './assets/structures/core.webp');
     this.load.image('arcBolt', './assets/effects/arc-bolt.webp');
@@ -38,7 +37,6 @@ export class GameScene extends Phaser.Scene {
     this.add.image(MAP.width / 2, MAP.height / 2, 'battlefield')
       .setDisplaySize(MAP.width, MAP.height).setDepth(-20);
     this.drawMap();
-    this.objectives = new ObjectiveViews(this);
     this.views = new EntityViews(this, () => this.bridge.input?.());
     this.fog = new FogView(this);
     this.setDisplay(this.bridge.getDisplay());
@@ -49,34 +47,34 @@ export class GameScene extends Phaser.Scene {
 
   drawMap() {
     const g = this.add.graphics().setDepth(-10);
-    g.lineStyle(MAP.laneWidth, 0x78a496, .035)
-      .lineBetween(MAP.blueCoreX, MAP.blueCoreY, MAP.redCoreX, MAP.redCoreY);
-    g.lineStyle(4, 0xe8c879, .18)
-      .lineBetween(MAP.blueCoreX, MAP.blueCoreY, MAP.redCoreX, MAP.redCoreY);
     for (const site of MAP.campSites) {
-      const approach = campApproach(site);
+      const geometry = campGeometry(site);
       const color = site.side ? 0xff747b : 0x5de6df;
-      g.lineStyle(MAP.campPathRadius * 2, color, .045)
-        .lineBetween(approach.x, approach.y, site.x, site.y);
-      g.fillStyle(color, .05).fillCircle(site.x, site.y, MAP.campPocketRadius);
-      const angle = Math.atan2(approach.y - site.y, approach.x - site.x);
-      const gap = .52;
-      g.lineStyle(3, color, .3).beginPath()
-        .arc(site.x, site.y, MAP.campPocketRadius, angle + gap, angle + Math.PI * 2 - gap)
+      const drawRoute = (width, stroke, alpha) => {
+        g.lineStyle(width, stroke, alpha).beginPath();
+        geometry.route.forEach((point, index) => {
+          if (index === 0) g.moveTo(point.x, point.y);
+          else g.lineTo(point.x, point.y);
+        });
+        g.strokePath();
+      };
+      drawRoute(geometry.pathRadius * 2 + 14, 0x061313, .68);
+      drawRoute(geometry.pathRadius * 2, color, .13);
+      g.fillStyle(0x071414, .28).fillCircle(site.x, site.y, geometry.pocketRadius + 8);
+      g.fillStyle(color, .13).fillCircle(site.x, site.y, geometry.pocketRadius);
+      g.lineStyle(7, 0x071414, .82).beginPath()
+        .arc(site.x, site.y, geometry.pocketRadius + 4, geometry.angle + geometry.halfGap, geometry.angle + Math.PI * 2 - geometry.halfGap)
         .strokePath();
-      const length = Math.hypot(approach.x - site.x, approach.y - site.y) || 1;
-      const normalX = -(approach.y - site.y) / length * MAP.campPathRadius;
-      const normalY = (approach.x - site.x) / length * MAP.campPathRadius;
-      g.lineStyle(2, color, .24)
-        .lineBetween(site.x + normalX, site.y + normalY, approach.x + normalX, approach.y + normalY)
-        .lineBetween(site.x - normalX, site.y - normalY, approach.x - normalX, approach.y - normalY);
+      g.lineStyle(3, color, .56).beginPath()
+        .arc(site.x, site.y, geometry.pocketRadius, geometry.angle + geometry.halfGap, geometry.angle + Math.PI * 2 - geometry.halfGap)
+        .strokePath();
     }
-    for (const site of MAP.buffSites) {
-      const approach = campApproach(site);
-      const color = Number.parseInt(site.color.slice(1), 16);
-      g.lineStyle(MAP.buffPathRadius * 2, color, .055)
-        .lineBetween(approach.x, approach.y, site.x, site.y);
-    }
+    g.lineStyle(MAP.laneWidth + 16, 0x061313, .48)
+      .lineBetween(MAP.blueCoreX, MAP.blueCoreY, MAP.redCoreX, MAP.redCoreY);
+    g.lineStyle(MAP.laneWidth, 0x9ec6a5, .12)
+      .lineBetween(MAP.blueCoreX, MAP.blueCoreY, MAP.redCoreX, MAP.redCoreY);
+    g.lineStyle(4, 0xe8c879, .22)
+      .lineBetween(MAP.blueCoreX, MAP.blueCoreY, MAP.redCoreX, MAP.redCoreY);
     g.fillStyle(0x5de6df, .08).fillCircle(MAP.blueCoreX, MAP.blueCoreY, 150);
     g.fillStyle(0xff747b, .08).fillCircle(MAP.redCoreX, MAP.redCoreY, 150);
   }
@@ -104,7 +102,6 @@ export class GameScene extends Phaser.Scene {
     this.latest = snapshot;
     if (!this.views) return;
     const target = this.views.apply(snapshot);
-    this.objectives.apply(snapshot.buffSites, snapshot.now);
     this.fog.draw(snapshot.vision);
     if (target && this.cameras.main._follow !== target) {
       this.cameras.main.startFollow(target, true, .12, .12);

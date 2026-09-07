@@ -28,7 +28,8 @@ coordinates never enter the opponent's iframe.
 - Five minions per side every 24 seconds; late waves replace a melee unit with
   a siege unit.
 - Two neutral guardians on each half. Defeating both guardians from one half in
-  the same spawn cycle unlocks one temporary relic choice.
+  the same spawn cycle unlocks one temporary relic choice. Each boss kill also
+  grants a non-stacking 30-second, 3% damage/movement Boss Power reward.
 - Level 1–8 upgrade draft with equal seeded offers, strict stat caps, catch-up
   XP, repeat-kill decay, and no permanent gameplay progression.
 - At eight minutes Dawnfall starts: both outer defenses decay, while the side
@@ -99,8 +100,8 @@ The four hero atlases, portraits, minion atlases, guardian atlases, and legacy
 ground texture are reused from the owner's Dawn Survivor repository. The
 diagonal battlefield, farm-site decal, tower/core structures, and projectile
 VFX were generated specifically for Dawn Duel. The authoritative collision map
-follows the battlefield's lane, four natural farm clearings, two neutral buff
-clearings, and their visible entrances; both server movement and client
-prediction share that geometry.
+follows the battlefield's lane and four natural boss clearings. Every corridor,
+entrance gap, and wall outline is rendered from the exact geometry shared by
+server movement and client prediction; there are no separate shrine objectives.
 Gameplay code, layout, balance, network model, UI, structures, effects, and
 rules in this repository are new.

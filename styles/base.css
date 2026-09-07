@@ -23,6 +23,16 @@ button { font: inherit; color: inherit; }
 #game { position: absolute; inset: 0; }
 .is-hidden { display: none !important; }
 
+#orientation-screen { display: none; }
+html.needs-landscape #orientation-screen {
+  position: fixed; inset: 0; z-index: 120; display: grid; place-content: center; gap: 12px;
+  padding: 28px; text-align: center; background: radial-gradient(circle, #163932, #061010 68%);
+}
+html.needs-landscape #orientation-screen strong { color: var(--gold); font-size: 17px; letter-spacing: .12em; }
+html.needs-landscape #orientation-screen span { color: var(--muted); font-size: 12px; }
+.phone-turn { width: 62px; height: 38px; margin: 0 auto 8px; border: 2px solid var(--gold); border-radius: 8px; transform: rotate(-8deg); }
+.phone-turn i { display: block; width: 4px; height: 4px; margin: 15px 4px 0 auto; border-radius: 50%; background: var(--gold); }
+
 .screen {
   position: absolute;
   inset: 0;

@@ -1,4 +1,4 @@
-import { BUFFS, CAMPS, MAP, MATCH, PLAYER, STRUCTURES } from './config.js';
+import { CAMPS, MAP, MATCH, PLAYER, STRUCTURES } from './config.js';
 import { spawnPoint, teamDirection } from './geometry.js';
 
 function structure(id, team, kind, x, y) {
@@ -16,17 +16,6 @@ function camp(id, side, campType, x, y) {
     hp: config.hp, maxHp: config.hp, alive: false, spawnAt: MATCH.campFirstSpawnSeconds,
     targetId: null, attackReadyAt: 0, idleSince: 0, cycle: 0, lastHitBy: null,
     pendingStrike: null,
-  };
-}
-
-function buffSite(site) {
-  return {
-    ...site,
-    kind: 'buff',
-    available: false,
-    spawnAt: BUFFS.firstSpawnSeconds,
-    captureTeam: null,
-    captureProgress: 0,
   };
 }
 
@@ -70,7 +59,6 @@ export function createWorld(seed = 20260904) {
       camp('redAegis', 1, 'aegis', MAP.campSites[2].x, MAP.campSites[2].y),
       camp('redTempo', 1, 'tempo', MAP.campSites[3].x, MAP.campSites[3].y),
     ],
-    buffSites: MAP.buffSites.map(buffSite),
     campProgress: {
       0: { killerId: null, ids: [] },
       1: { killerId: null, ids: [] },
@@ -104,7 +92,7 @@ export function addPlayer(world, id, name = 'Player') {
     kills: 0,
     deaths: 0,
     guardianKills: 0,
-    buffCaptures: 0,
+    bossPowers: 0,
     streak: 0,
     lastKilledBy: null,
     repeatDeathCount: 0,
@@ -134,7 +122,7 @@ export function addPlayer(world, id, name = 'Player') {
     relicOffer: null,
     relic: null,
     relicUntil: 0,
-    surgeUntil: 0,
+    bossPowerUntil: 0,
     wardenReadyAt: 0,
     input: { seq: -1, moveX: 0, moveY: 0, aimX: facing.x, aimY: facing.y, attack: false, skill1: false, skill2: false },
     inputFresh: false,
@@ -184,7 +172,7 @@ export function resetPlayerAtFountain(player) {
   player.shieldUntil = 0;
   player.burn = null;
   player.slowUntil = 0;
-  player.surgeUntil = 0;
+  player.bossPowerUntil = 0;
   player.input.moveX = 0;
   player.input.moveY = 0;
   player.input.attack = false;

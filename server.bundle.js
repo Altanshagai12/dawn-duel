@@ -53,19 +53,13 @@ var MAP = Object.freeze({
   laneWidth: 300,
   campPocketRadius: 118,
   campPathRadius: 68,
-  buffPocketRadius: 92,
-  buffPathRadius: 56,
   riverProgress: 893.5358135,
   fountainEdge: 230,
   campSites: [
-    { x: 480, y: 250, side: 0 },
-    { x: 930, y: 960, side: 0 },
-    { x: 1520, y: 875, side: 1 },
-    { x: 1070, y: 165, side: 1 }
-  ],
-  buffSites: [
-    { id: "tide", x: 780, y: 385, color: "#62e9ff" },
-    { id: "veil", x: 1220, y: 740, color: "#c487ff" }
+    { x: 480, y: 250, side: 0, route: [{ x: 560, y: 390 }, { x: 700, y: 620 }, { x: 725, y: 650 }] },
+    { x: 930, y: 960, side: 0, route: [{ x: 900, y: 825 }, { x: 760, y: 710 }] },
+    { x: 1520, y: 875, side: 1, route: [{ x: 1440, y: 735 }, { x: 1300, y: 505 }, { x: 1275, y: 475 }] },
+    { x: 1070, y: 165, side: 1, route: [{ x: 1100, y: 300 }, { x: 1240, y: 415 }] }
   ]
 });
 var MATCH = Object.freeze({
@@ -128,15 +122,10 @@ var CAMPS = Object.freeze({
   attackRange: 72,
   aegis: { hp: 950, radius: 34, damage: 54, cooldown: 1.2, windup: 0.5, strikeRadius: 72, slow: 0.2, slowSeconds: 0.8, xp: 140 },
   tempo: { hp: 1200, radius: 38, damage: 66, cooldown: 1.35, windup: 0.58, strikeRadius: 92, knockback: 45, xp: 180 },
-  relicSeconds: 45
-});
-var BUFFS = Object.freeze({
-  firstSpawnSeconds: 30,
-  respawnSeconds: 75,
-  captureSeconds: 1.25,
-  effectSeconds: 30,
-  damageBonus: 0.05,
-  speedBonus: 0.05
+  relicSeconds: 45,
+  powerSeconds: 30,
+  powerDamageBonus: 0.03,
+  powerSpeedBonus: 0.03
 });
 var VISION = Object.freeze({
   hero: 420,
@@ -229,7 +218,17 @@ function lanePoint(progress, offset = 0) {
   };
 }
 function campApproach(site) {
-  return lanePoint(Math.max(0, Math.min(MAP.laneLength, laneProgress(site))));
+  return site.route?.at(-1) || lanePoint(Math.max(0, Math.min(MAP.laneLength, laneProgress(site))));
+}
+function campGeometry(site, radius = 0) {
+  const pocketRadius = Math.max(0, MAP.campPocketRadius - radius);
+  const pathRadius = Math.max(0, MAP.campPathRadius - radius);
+  const route = [{ x: site.x, y: site.y }, ...site.route || [campApproach(site)]];
+  const first = route[1] || route[0];
+  const angle = Math.atan2(first.y - site.y, first.x - site.x);
+  const halfGap = pocketRadius > 0 ? Math.asin(Math.min(1, pathRadius / pocketRadius)) : Math.PI;
+  const wallStartDistance = Math.sqrt(Math.max(0, pocketRadius ** 2 - pathRadius ** 2));
+  return { pocketRadius, pathRadius, route, angle, halfGap, wallStartDistance };
 }
 function segmentDistanceSquared(point, start, end) {
   const dx = end.x - start.x;
@@ -246,14 +245,13 @@ function isBattlefieldWalkable(point, radius = 0) {
   const end = { x: MAP.redCoreX, y: MAP.redCoreY };
   const laneRadius = Math.max(0, MAP.laneWidth / 2 - radius);
   if (segmentDistanceSquared(point, start, end) <= laneRadius ** 2) return true;
-  const connectedToLane = (site, pocketSize, pathSize) => {
-    const pocketRadius = Math.max(0, pocketSize - radius);
-    const pathRadius = Math.max(0, pathSize - radius);
-    const approach = campApproach(site);
-    const inPocket = (point.x - site.x) ** 2 + (point.y - site.y) ** 2 <= pocketRadius ** 2;
-    return inPocket || segmentDistanceSquared(point, approach, site) <= pathRadius ** 2;
+  const connectedToLane = (site) => {
+    const geometry = campGeometry(site, radius);
+    const inPocket = (point.x - site.x) ** 2 + (point.y - site.y) ** 2 <= geometry.pocketRadius ** 2;
+    if (inPocket) return true;
+    return geometry.route.slice(1).some((end2, index) => segmentDistanceSquared(point, geometry.route[index], end2) <= geometry.pathRadius ** 2);
   };
-  return MAP.campSites.some((site) => connectedToLane(site, MAP.campPocketRadius, MAP.campPathRadius)) || MAP.buffSites.some((site) => connectedToLane(site, MAP.buffPocketRadius, MAP.buffPathRadius));
+  return MAP.campSites.some(connectedToLane);
 }
 function resolveWalkableMove(origin, desired, radius = 0, blocked = () => false) {
   const canOccupy = (point) => isBattlefieldWalkable(point, radius) && !blocked(point);
@@ -352,16 +350,6 @@ function camp(id, side, campType, x, y) {
     pendingStrike: null
   };
 }
-function buffSite(site) {
-  return {
-    ...site,
-    kind: "buff",
-    available: false,
-    spawnAt: BUFFS.firstSpawnSeconds,
-    captureTeam: null,
-    captureProgress: 0
-  };
-}
 function createWorld(seed = 20260904) {
   return {
     version: 1,
@@ -402,7 +390,6 @@ function createWorld(seed = 20260904) {
       camp("redAegis", 1, "aegis", MAP.campSites[2].x, MAP.campSites[2].y),
       camp("redTempo", 1, "tempo", MAP.campSites[3].x, MAP.campSites[3].y)
     ],
-    buffSites: MAP.buffSites.map(buffSite),
     campProgress: {
       0: { killerId: null, ids: [] },
       1: { killerId: null, ids: [] }
@@ -435,7 +422,7 @@ function addPlayer(world, id, name = "Player") {
     kills: 0,
     deaths: 0,
     guardianKills: 0,
-    buffCaptures: 0,
+    bossPowers: 0,
     streak: 0,
     lastKilledBy: null,
     repeatDeathCount: 0,
@@ -465,7 +452,7 @@ function addPlayer(world, id, name = "Player") {
     relicOffer: null,
     relic: null,
     relicUntil: 0,
-    surgeUntil: 0,
+    bossPowerUntil: 0,
     wardenReadyAt: 0,
     input: { seq: -1, moveX: 0, moveY: 0, aimX: facing.x, aimY: facing.y, attack: false, skill1: false, skill2: false },
     inputFresh: false,
@@ -512,7 +499,7 @@ function resetPlayerAtFountain(player) {
   player.shieldUntil = 0;
   player.burn = null;
   player.slowUntil = 0;
-  player.surgeUntil = 0;
+  player.bossPowerUntil = 0;
   player.input.moveX = 0;
   player.input.moveY = 0;
   player.input.attack = false;
@@ -606,7 +593,7 @@ function playerSummary(world, player, visible, viewerId) {
     relicOffer: player.relicOffer,
     relic: player.relic,
     relicUntil: player.relicUntil,
-    surgeUntil: player.surgeUntil,
+    bossPowerUntil: player.bossPowerUntil,
     ranks: player.ranks,
     xp: player.xp
   };
@@ -649,21 +636,6 @@ function filterSnapshot(world, viewerId) {
     minions: world.minions.filter(filter),
     clones: world.clones.filter(filter),
     camps: world.camps.filter((camp2) => camp2.alive && isPointVisible(world, team, camp2)),
-    buffSites: world.buffSites.map((site) => {
-      const visible = isPointVisible(world, team, { ...site, radius: MAP.buffPocketRadius });
-      return {
-        id: site.id,
-        kind: site.kind,
-        x: site.x,
-        y: site.y,
-        color: site.color,
-        visible,
-        available: visible ? site.available : null,
-        spawnAt: visible ? site.spawnAt : null,
-        captureTeam: visible ? site.captureTeam : null,
-        captureProgress: visible ? site.captureProgress : 0
-      };
-    }),
     structures: world.structures,
     projectiles: world.projectiles.filter((projectile) => isPointVisible(world, team, projectile)).map(publicProjectile),
     effects: world.effects.filter((effect) => {
@@ -690,9 +662,9 @@ function seededOrder(ids, seed) {
 var CHOICE_SECONDS = 12;
 function derivedStats(player, now = 0) {
   const rank = (id) => Math.min(UPGRADES[id].maxRank, Math.max(0, Number(player.ranks[id] || 0)));
-  const surge = (player.surgeUntil || 0) > now;
-  const damageBonus = surge ? BUFFS.damageBonus : 0;
-  const speedBonus = surge ? BUFFS.speedBonus : 0;
+  const bossPower = (player.bossPowerUntil || 0) > now;
+  const damageBonus = bossPower ? CAMPS.powerDamageBonus : 0;
+  const speedBonus = bossPower ? CAMPS.powerSpeedBonus : 0;
   return {
     maxHp: PLAYER.hp + rank("vitality") * UPGRADES.vitality.amount,
     basicDamage: PLAYER.attackDamage * (1 + Math.min(0.2, rank("edge") * UPGRADES.edge.amount + damageBonus)),
@@ -931,56 +903,6 @@ function updateEffects(world) {
   world.effects = world.effects.filter((effect) => effect.expiresAt > world.matchTime);
 }
 
-// server/buffs.js
-function playersInside(world, site) {
-  const radius = MAP.buffPocketRadius;
-  return Object.values(world.players).filter((player) => player.connected && player.hero && player.spiritUntil <= world.matchTime && distanceSquared(player, site) <= radius ** 2);
-}
-function spawnSite(world, site) {
-  site.available = true;
-  site.captureTeam = null;
-  site.captureProgress = 0;
-  addEffect(world, "buffSpawn", { x: site.x, y: site.y, buffId: site.id }, 0.8);
-}
-function captureSite(world, site, player) {
-  site.available = false;
-  site.spawnAt = world.matchTime + BUFFS.respawnSeconds;
-  site.captureTeam = null;
-  site.captureProgress = 0;
-  player.surgeUntil = world.matchTime + BUFFS.effectSeconds;
-  player.buffCaptures += 1;
-  addEffect(world, "buffCapture", {
-    x: site.x,
-    y: site.y,
-    team: player.team,
-    targetId: player.id,
-    buffId: site.id,
-    radius: MAP.buffPocketRadius
-  }, 0.9);
-}
-function updateBuffSites(world, dt) {
-  for (const site of world.buffSites) {
-    if (!site.available) {
-      if (world.matchTime >= site.spawnAt) spawnSite(world, site);
-      continue;
-    }
-    const inside = playersInside(world, site);
-    const teams = new Set(inside.map((player2) => player2.team));
-    if (inside.length !== 1 || teams.size !== 1) {
-      site.captureTeam = null;
-      site.captureProgress = 0;
-      continue;
-    }
-    const [player] = inside;
-    if (site.captureTeam !== player.team) {
-      site.captureTeam = player.team;
-      site.captureProgress = 0;
-    }
-    site.captureProgress = Math.min(1, site.captureProgress + dt / BUFFS.captureSeconds);
-    if (site.captureProgress >= 1) captureSite(world, site, player);
-  }
-}
-
 // server/combat.js
 function findEntity(world, id) {
   return world.players[id] || world.minions.find((entity) => entity.id === id) || world.clones.find((entity) => entity.id === id) || world.camps.find((entity) => entity.id === id) || Object.values(world.structures).find((entity) => entity.id === id) || null;
@@ -1061,7 +983,15 @@ function campDeath(world, camp2) {
   const killer = world.players[camp2.lastHitBy];
   if (!killer) return;
   killer.guardianKills += 1;
+  killer.bossPowers += 1;
+  killer.bossPowerUntil = Math.max(killer.bossPowerUntil || 0, world.matchTime + CAMPS.powerSeconds);
   awardXp(world, killer, CAMPS[camp2.campType].xp);
+  addEffect(world, "bossPower", {
+    x: camp2.x,
+    y: camp2.y,
+    team: killer.team,
+    targetId: killer.id
+  }, 0.9);
   const progress = world.campProgress[camp2.side];
   if (progress.killerId !== killer.id) {
     progress.killerId = killer.id;
@@ -1930,7 +1860,6 @@ function stepWorld(world, dt) {
   }
   updateOffers(world);
   updatePlayers(world, step);
-  updateBuffSites(world, step);
   updateMinions(world, step);
   updateStructures(world);
   updateCamps(world, step);

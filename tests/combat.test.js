@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { MAP, PLAYER, STRUCTURES } from '../server/config.js';
 import { applyDamage, updateBurns } from '../server/combat.js';
 import {
-  campApproach, isBattlefieldWalkable, laneOffset, lanePoint, laneProgress,
+  campApproach, campGeometry, isBattlefieldWalkable, laneOffset, lanePoint, laneProgress,
   resolveWalkableMove, teamDirection, traceWalkableMove,
 } from '../server/geometry.js';
 import { applyInput } from '../server/inputs.js';
@@ -148,7 +149,8 @@ test('heroes stay on the lane and can enter symmetric farm pockets', () => {
 
 test('farm walls are solid except for their visible lane entrances', () => {
   for (const site of MAP.campSites) {
-    const approach = campApproach(site);
+    const geometry = campGeometry(site, PLAYER.radius);
+    const approach = geometry.route[1];
     const entry = { x: (site.x + approach.x) / 2, y: (site.y + approach.y) / 2 };
     const direction = normalize(approach.x - site.x, approach.y - site.y);
     const tangent = { x: -direction.y, y: direction.x };
@@ -163,6 +165,18 @@ test('farm walls are solid except for their visible lane entrances', () => {
     assert.equal(isBattlefieldWalkable(entry, PLAYER.radius), true);
     assert.equal(isBattlefieldWalkable(inside, PLAYER.radius), true);
     assert.equal(isBattlefieldWalkable(wall, PLAYER.radius), false);
+  }
+});
+
+test('rendered camp entrance contours are derived from authoritative collision geometry', () => {
+  const source = readFileSync(new URL('../src/game/GameScene.js', import.meta.url), 'utf8');
+  assert.match(source, /campGeometry\(site\)/);
+  assert.doesNotMatch(source, /const gap\s*=\s*\.52/);
+  for (const site of MAP.campSites) {
+    const geometry = campGeometry(site);
+    assert.ok(Math.abs(Math.sin(geometry.halfGap) * geometry.pocketRadius - geometry.pathRadius) < 0.001);
+    assert.deepEqual(geometry.route.at(-1), campApproach(site));
+    for (const point of geometry.route) assert.equal(isBattlefieldWalkable(point), true);
   }
 });
 

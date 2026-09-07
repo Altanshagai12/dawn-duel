@@ -97,7 +97,15 @@ function campDeath(world, camp) {
   const killer = world.players[camp.lastHitBy];
   if (!killer) return;
   killer.guardianKills += 1;
+  killer.bossPowers += 1;
+  killer.bossPowerUntil = Math.max(killer.bossPowerUntil || 0, world.matchTime + CAMPS.powerSeconds);
   awardXp(world, killer, CAMPS[camp.campType].xp);
+  addEffect(world, 'bossPower', {
+    x: camp.x,
+    y: camp.y,
+    team: killer.team,
+    targetId: killer.id,
+  }, 0.9);
   const progress = world.campProgress[camp.side];
   if (progress.killerId !== killer.id) {
     progress.killerId = killer.id;

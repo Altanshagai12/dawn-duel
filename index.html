@@ -13,6 +13,12 @@
   <main id="app">
     <div id="game" aria-label="Dawn Duel battlefield"></div>
 
+    <section id="orientation-screen" aria-live="polite">
+      <div class="phone-turn" aria-hidden="true"><i></i></div>
+      <strong>УТСАА ХЭВТЭЭ БОЛГОНО УУ</strong>
+      <span>Тулаан зөвхөн өргөн landscape дэлгэцээр тоглогдоно.</span>
+    </section>
+
     <section id="boot-screen" class="screen screen--active">
       <div class="brand-mark">DD</div>
       <p class="eyebrow">USION ORIGINAL</p>
@@ -50,7 +56,7 @@
       <div id="network" class="network"><i></i><span>SOLO</span></div>
       <canvas id="minimap" width="192" height="108" aria-label="Minimap"></canvas>
       <div id="player-bars" class="player-bars">
-        <small id="buff-status" class="buff-status is-hidden"></small>
+        <small id="boss-power-status" class="boss-power-status is-hidden"></small>
         <div><span id="hero-name">SHANA</span><b id="hp-copy">1500 / 1500</b></div>
         <i><em id="hp-bar"></em><u id="shield-bar"></u></i>
         <i class="xp"><em id="xp-bar"></em></i>
@@ -94,6 +100,6 @@
   </main>
   <script src="https://usions.com/vendor/phaser/4.2.1/phaser.min.js"></script>
   <script src="https://usions.com/usion-sdk.js"></script>
-  <script type="module" src="./app.v2.js"></script>
+  <script type="module" src="./app.v3.js"></script>
 </body>
 </html>

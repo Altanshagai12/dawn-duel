@@ -15,7 +15,7 @@ export class UIController {
     this.lastDraft = null;
     this.lastWave = 0;
     this.lastDawnfall = false;
-    this.lastSurgeUntil = 0;
+    this.lastBossPowerUntil = 0;
     this.toastTimer = 0;
     this.callbacks = {};
     $('#language').addEventListener('click', () => this.setLanguage(this.language === 'mn' ? 'en' : 'mn'));
@@ -41,6 +41,8 @@ export class UIController {
   applyLanguage() {
     const t = this.t();
     $('#boot-copy').textContent = t.boot;
+    $('#orientation-screen strong').textContent = t.rotateTitle;
+    $('#orientation-screen span').textContent = t.rotateCopy;
     $('#hero-title').textContent = t.choose;
     $('#select-status').textContent = t.waiting;
     $('#blue-label').textContent = t.you;
@@ -174,10 +176,10 @@ export class UIController {
     $('#shield-bar').style.width = pct((you.shield || 0) / you.maxHp);
     $('#shield-bar').style.left = '0';
     $('#xp-bar').style.width = pct(xpProgress(you).ratio);
-    const buffRemaining = Math.max(0, Math.ceil((you.surgeUntil || 0) - snapshot.now));
-    const buffStatus = $('#buff-status');
-    buffStatus.textContent = `${this.t().surge} · ${buffRemaining}s`;
-    buffStatus.classList.toggle('is-hidden', buffRemaining <= 0);
+    const bossPowerRemaining = Math.max(0, Math.ceil((you.bossPowerUntil || 0) - snapshot.now));
+    const bossPowerStatus = $('#boss-power-status');
+    bossPowerStatus.textContent = `${this.t().bossPower} · ${bossPowerRemaining}s`;
+    bossPowerStatus.classList.toggle('is-hidden', bossPowerRemaining <= 0);
     this.updateChoices(you, snapshot.now);
     this.updateCooldowns(you, snapshot.now);
     this.drawMinimap(snapshot);
@@ -227,12 +229,12 @@ export class UIController {
     if (snapshot.match.paused) text = this.t().paused;
     else if (snapshot.match.phase === 'countdown') text = `${this.t().countdown} ${Math.ceil(snapshot.match.countdown)}`;
     else if (player.spiritUntil > snapshot.now) text = `${this.t().spirit} ${Math.ceil(player.spiritUntil - snapshot.now)}`;
-    else if ((player.surgeUntil || 0) > snapshot.now && player.surgeUntil > this.lastSurgeUntil) text = `${this.t().surge} · 30s`;
+    else if ((player.bossPowerUntil || 0) > snapshot.now && player.bossPowerUntil > this.lastBossPowerUntil) text = `${this.t().bossPower} · 30s`;
     else if (snapshot.match.dawnfall && !this.lastDawnfall) text = this.t().dawnfall;
     else if (snapshot.match.wave > this.lastWave) text = `${this.t().wave} ${snapshot.match.wave}`;
     this.lastWave = snapshot.match.wave;
     this.lastDawnfall = snapshot.match.dawnfall;
-    this.lastSurgeUntil = Math.max(this.lastSurgeUntil, player.surgeUntil || 0);
+    this.lastBossPowerUntil = Math.max(this.lastBossPowerUntil, player.bossPowerUntil || 0);
     const node = $('#announcement');
     node.textContent = text;
     node.classList.toggle('on', Boolean(text));
@@ -261,18 +263,6 @@ export class UIController {
     ctx.stroke();
     ctx.fillStyle = 'rgba(78,230,224,.16)';
     for (const source of snapshot.vision) ctx.beginPath(), ctx.arc(source.x * sx, source.y * sy, Math.max(2, source.radius * sx), 0, Math.PI * 2), ctx.fill();
-    for (const site of snapshot.buffSites || []) {
-      if (site.visible === false) continue;
-      ctx.beginPath();
-      ctx.arc(site.x * sx, site.y * sy, 3.5, 0, Math.PI * 2);
-      ctx.fillStyle = site.available ? site.color : 'rgba(180,190,187,.24)';
-      ctx.fill();
-      if (site.available) {
-        ctx.strokeStyle = site.color;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      }
-    }
     for (const structure of Object.values(snapshot.structures)) this.dot(ctx, structure, sx, sy, structure.team ? '#ff6b72' : '#4ee6e0', structure.kind === 'core' ? 5 : 3);
     for (const minion of snapshot.minions) this.dot(ctx, minion, sx, sy, minion.team ? '#ff858b' : '#75f3ed', 1.5);
     for (const player of Object.values(snapshot.players)) if (Number.isFinite(player.x)) this.dot(ctx, player, sx, sy, player.id === snapshot.you ? '#f5c66a' : '#ff6b72', 3);

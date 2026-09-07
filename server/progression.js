@@ -1,13 +1,13 @@
-import { BUFFS, PLAYER, RELICS, UPGRADES, XP_THRESHOLDS } from './config.js';
+import { CAMPS, PLAYER, RELICS, UPGRADES, XP_THRESHOLDS } from './config.js';
 import { seededOrder } from './random.js';
 
 const CHOICE_SECONDS = 12;
 
 export function derivedStats(player, now = 0) {
   const rank = id => Math.min(UPGRADES[id].maxRank, Math.max(0, Number(player.ranks[id] || 0)));
-  const surge = (player.surgeUntil || 0) > now;
-  const damageBonus = surge ? BUFFS.damageBonus : 0;
-  const speedBonus = surge ? BUFFS.speedBonus : 0;
+  const bossPower = (player.bossPowerUntil || 0) > now;
+  const damageBonus = bossPower ? CAMPS.powerDamageBonus : 0;
+  const speedBonus = bossPower ? CAMPS.powerSpeedBonus : 0;
   return {
     maxHp: PLAYER.hp + rank('vitality') * UPGRADES.vitality.amount,
     basicDamage: PLAYER.attackDamage * (1 + Math.min(0.2, rank('edge') * UPGRADES.edge.amount + damageBonus)),

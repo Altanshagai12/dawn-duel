@@ -1,6 +1,7 @@
 export const copy = {
   mn: {
     boot: 'Тулааны талбарыг бэлдэж байна…', choose: 'Баатраа сонго', waiting: 'Өрсөлдөгч хүлээж байна',
+    rotateTitle: 'УТСАА ХЭВТЭЭ БОЛГОНО УУ', rotateCopy: 'Тулаан зөвхөн өргөн landscape дэлгэцээр тоглогдоно.',
     selected: 'Сонголоо · тулаан удахгүй эхэлнэ', you: 'ТА', rival: 'ӨРСӨЛДӨГЧ', solo: 'BOT БЭЛТГЭЛ', live: 'ШУУД',
     roomConnected: 'ӨРӨӨНД ХОЛБОГДСОН', roomConnecting: 'ӨРӨӨНД ХОЛБОЖ БАЙНА', pick: 'СОНГОНО', picked: 'СОНГОСОН', ready: 'БЭЛЭН', notJoined: 'ОРООГҮЙ', host: 'HOST',
     inviteWait: 'Таны сонголт баталгаажлаа · найз invite дээр дарж орохыг хүлээж байна',
@@ -15,7 +16,7 @@ export const copy = {
     hint: 'Usion-ийн Share товчоор найзаа урьж бодит тулаан эхлүүлээрэй.',
     upgrade: 'DAWN САЙЖРУУЛАЛТ', relic: 'ХАМГААЛАГЧИЙН RELIC', reroll: '↻ ДАХИН СОНГОХ',
     wave: 'ДАВАЛГАА', paused: 'ӨРСӨЛДӨГЧ ДАХИН ХОЛБОГДОЖ БАЙНА', spirit: 'ШАРХДСАН СҮНС', countdown: 'ТУЛААН',
-    dawnfall: 'DAWNFALL · ДАРАМТ ЦӨМИЙГ ЭВДЭНЭ', surge: 'DAWN SURGE',
+    dawnfall: 'DAWNFALL · ДАРАМТ ЦӨМИЙГ ЭВДЭНЭ', bossPower: 'БОССЫН ХҮЧ',
     skills: {
       shana: ['PRECISION', 'VOLLEY'], diamond: ['AEGIS', 'REPULSE'],
       scarlett: ['EMBER LINE', 'CINDER'], hina: ['SHADOW STEP', 'MOON SNARE'],
@@ -36,6 +37,7 @@ export const copy = {
   },
   en: {
     boot: 'Preparing the battleground…', choose: 'Choose your hero', waiting: 'Waiting for rival',
+    rotateTitle: 'ROTATE YOUR PHONE', rotateCopy: 'Battle is available only in a wide landscape view.',
     selected: 'Locked in · battle begins soon', you: 'YOU', rival: 'RIVAL', solo: 'BOT PRACTICE', live: 'LIVE',
     roomConnected: 'ROOM CONNECTED', roomConnecting: 'CONNECTING TO ROOM', pick: 'PICKING', picked: 'LOCKED', ready: 'READY', notJoined: 'NOT JOINED', host: 'HOST',
     inviteWait: 'Locked in · waiting for your friend to open the invite',
@@ -49,7 +51,7 @@ export const copy = {
     reconnecting: 'CONNECTION LOST', victory: 'VICTORY', defeat: 'DEFEAT', draw: 'DRAW', again: 'Practice again',
     hint: 'Use Usion Share to invite a friend and start a real duel.', upgrade: 'DAWN UPGRADE', relic: 'GUARDIAN RELIC', reroll: '↻ REROLL',
     wave: 'WAVE', paused: 'RIVAL IS RECONNECTING', spirit: 'WOUNDED SPIRIT', countdown: 'BATTLE',
-    dawnfall: 'DAWNFALL · PRESSURE BREAKS THE CORE', surge: 'DAWN SURGE',
+    dawnfall: 'DAWNFALL · PRESSURE BREAKS THE CORE', bossPower: 'BOSS POWER',
     skills: {
       shana: ['PRECISION', 'VOLLEY'], diamond: ['AEGIS', 'REPULSE'],
       scarlett: ['EMBER LINE', 'CINDER'], hina: ['SHADOW STEP', 'MOON SNARE'],

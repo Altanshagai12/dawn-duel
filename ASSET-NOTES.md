@@ -39,3 +39,14 @@ blue lower-left base to a red upper-right base; four jungle guardian clearings
 with visible entrances and enclosing rock/root walls; exactly two neutral
 river-side buff shrine clearings, cyan and violet; no characters, towers, UI,
 text, or logos; polished high-detail environment with readable traversal.
+
+## Boss battlefield v3
+
+`assets/map/dawnfall-lane-v3.png` was produced with the built-in OpenAI image
+generation workflow in precise-object-edit mode on 2026-09-07. The two small
+cyan/violet shrine platforms from v2 were replaced by clearly blocked river,
+rock, root, and vegetation terrain. The four guardian/boss clearings, two bases,
+diagonal lane, top-down camera, palette, and composition were preserved. The
+asset contains no characters, monsters, towers, labels, UI, logos, or
+watermarks. Runtime collision and its visible contour overlay use one shared
+geometry contract.

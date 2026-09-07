@@ -5,7 +5,7 @@ import {
   playerDisplayName, predictionSpeed, shouldRecreateEntityView, structureBlocks,
 } from '../src/game/EntityViews.js';
 import { PLAYER } from '../server/config.js';
-import { requestLandscapeLock } from '../src/ui/orientation.js';
+import { needsLandscapeGate, requestLandscapeLock } from '../src/ui/orientation.js';
 
 test('portrait phones are never faked by rotating only the game root', () => {
   const css = readFileSync(new URL('../styles/responsive.css', import.meta.url), 'utf8');
@@ -23,6 +23,16 @@ test('standalone hosts request real landscape orientation when supported', async
   assert.equal(await requestLandscapeLock({ orientation: { lock: async () => { throw new Error('denied'); } } }), false);
 });
 
+test('phone portrait is gated while true landscape and desktop portrait remain playable', () => {
+  assert.equal(needsLandscapeGate({ innerWidth: 390, innerHeight: 844 }), true);
+  assert.equal(needsLandscapeGate({ innerWidth: 844, innerHeight: 390 }), false);
+  assert.equal(needsLandscapeGate({ innerWidth: 900, innerHeight: 1200 }), false);
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../styles/base.css', import.meta.url), 'utf8');
+  assert.match(html, /id="orientation-screen"/);
+  assert.match(css, /html\.needs-landscape #orientation-screen/);
+});
+
 test('overhead labels use the verified Usion display name, never hero or player ids', () => {
   assert.equal(playerDisplayName({ id: 'user-42', name: 'Altan Shagai', hero: 'hina' }), 'Altan Shagai');
   assert.equal(playerDisplayName({ id: 'user-42', name: '', hero: 'hina' }), 'Player');
@@ -36,9 +46,9 @@ test('client prediction uses the same live structure collision circles as the se
   assert.equal(structureBlocks(structures, { x: 50, y: 50 }, 6), false);
 });
 
-test('client prediction mirrors surge, Swift, slow, and wounded movement modifiers', () => {
-  const player = { ranks: { swift: 2 }, surgeUntil: 40, slowUntil: 30, slowRatio: .2, spiritUntil: 0 };
-  const boostedAndSlowed = PLAYER.speed * (1 + .06 + .05) * .8;
+test('client prediction mirrors boss power, Swift, slow, and wounded movement modifiers', () => {
+  const player = { ranks: { swift: 2 }, bossPowerUntil: 40, slowUntil: 30, slowRatio: .2, spiritUntil: 0 };
+  const boostedAndSlowed = PLAYER.speed * (1 + .06 + .03) * .8;
   assert.ok(Math.abs(predictionSpeed(player, 20) - boostedAndSlowed) < 0.001);
   player.spiritUntil = 25;
   assert.ok(Math.abs(predictionSpeed(player, 20) - boostedAndSlowed * PLAYER.woundedSpeedRatio) < 0.001);
@@ -59,15 +69,17 @@ test('short landscape gameplay has a dedicated wide-screen HUD layout', () => {
   assert.match(landscape, /\.player-bars\s*\{[^}]*32vw/);
 });
 
-test('fogged buff objectives are omitted instead of rendered with a fake timer', () => {
-  const objectiveSource = readFileSync(new URL('../src/game/ObjectiveViews.js', import.meta.url), 'utf8');
-  const minimapSource = readFileSync(new URL('../src/ui/UIController.js', import.meta.url), 'utf8');
-  assert.match(objectiveSource, /site\.visible === false[\s\S]*?setVisible\(false\)[\s\S]*?continue/);
-  assert.match(minimapSource, /site\.visible === false\) continue/);
+test('the client contains no standalone buff shrine renderer or HUD copy', () => {
+  const scene = readFileSync(new URL('../src/game/GameScene.js', import.meta.url), 'utf8');
+  const minimap = readFileSync(new URL('../src/ui/UIController.js', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.doesNotMatch(scene, /buffSites|ObjectiveViews/);
+  assert.doesNotMatch(minimap, /buffSites|buff-status/);
+  assert.doesNotMatch(html, /buff-status/);
 });
 
 test('production loads one versioned client bundle so stale modules cannot mix', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  assert.match(html, /<script type="module" src="\.\/app\.v2\.js"><\/script>/);
+  assert.match(html, /<script type="module" src="\.\/app\.v3\.js"><\/script>/);
   assert.doesNotMatch(html, /src="\.\/src\/main\.js"/);
 });
