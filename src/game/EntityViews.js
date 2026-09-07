@@ -1,15 +1,13 @@
 import { MAP, STRUCTURES } from '../../server/config.js';
 import { resolveWalkableMove } from '../../server/geometry.js';
-import { HEROES } from '../../server/heroes.js';
 
 const HERO_SCALE = { shana: .43, diamond: .42, scarlett: .43, hina: .43 };
 const MINION_TEXTURE = { melee: 'wingling', ranged: 'spitter', siege: 'brute' };
 const CAMP_TEXTURE = { aegis: 'aegis', tempo: 'tempo' };
 const COLORS = [0x6cebe5, 0xff7a80];
 
-export function heroDisplayName(heroId, language = 'mn') {
-  const hero = HEROES[heroId];
-  return (language === 'mn' ? hero?.nameMn : hero?.name) || hero?.name || 'Hero';
+export function playerDisplayName(player) {
+  return String(player?.name || 'Player').slice(0, 24);
 }
 
 export function structureBlocks(structures, point, radius) {
@@ -29,10 +27,9 @@ function directionRow(dx, dy) {
 }
 
 export class EntityViews {
-  constructor(scene, inputState, language = () => 'mn') {
+  constructor(scene, inputState) {
     this.scene = scene;
     this.inputState = inputState;
-    this.language = language;
     this.items = new Map();
     this.seenEffects = new Set();
     this.structures = [];
@@ -54,7 +51,7 @@ export class EntityViews {
     const barBg = this.scene.add.rectangle(0, -42, 58, 5, 0x041010, .9).setOrigin(.5);
     const bar = this.scene.add.rectangle(-29, -42, 58, 4, COLORS[entity.team] || 0xc4a4ff).setOrigin(0, .5);
     const label = entity.kind === 'player'
-      ? this.scene.add.text(0, -55, heroDisplayName(entity.hero, this.language()), { fontFamily: 'system-ui', fontSize: '10px', color: '#effff8', stroke: '#061010', strokeThickness: 3 }).setOrigin(.5)
+      ? this.scene.add.text(0, -55, playerDisplayName(entity), { fontFamily: 'system-ui', fontSize: '10px', color: '#effff8', stroke: '#061010', strokeThickness: 3 }).setOrigin(.5)
       : null;
     const children = label ? [sprite, barBg, bar, label] : [sprite, barBg, bar];
     const root = this.scene.add.container(entity.x, entity.y, children).setDepth(entity.y + 30);
@@ -110,7 +107,7 @@ export class EntityViews {
       view.targetX = entity.x; view.targetY = entity.y;
       if (view.bar && entity.maxHp) view.bar.scaleX = Math.max(0, entity.hp / entity.maxHp);
       if (entity.kind === 'player') {
-        view.label?.setText(heroDisplayName(entity.hero, this.language()));
+        view.label?.setText(playerDisplayName(entity));
         view.root.setAlpha(entity.spiritUntil > snapshot.now ? .38 : 1);
       }
     }

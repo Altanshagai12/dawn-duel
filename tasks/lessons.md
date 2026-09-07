@@ -13,3 +13,4 @@
 - Structure threat rings must govern both sides of combat: attackers cannot damage a tower from outside the rendered ring, and a ranged unit that can attack must also be targetable by that tower.
 - Terrain collision must cover every displacement and damage path, including projectiles, radial skills, dash/knockback, bots, and client prediction; validating only an endpoint leaves tunneling and wall-shot exploits.
 - A farm bot test must prove the guardian actually targets the bot, not merely count a guardian kill, because ranged damage can create a false-positive farming result.
+- Player overhead labels must use the registered Usion display name from the server-verified, signed game-access identity. Do not substitute a hero name, accept a client-claimed profile name, or fall back to a user id.

@@ -67,6 +67,7 @@ async function token(playerId, targetRoom, sessionId, hostId = 'host') {
     service_id: serviceId,
     session_id: sessionId,
     permissions: ['play'],
+    name: `Usion ${playerId}`,
   };
   if (hostId !== null) claims.host_id = hostId;
   return new SignJWT(claims)
@@ -236,6 +237,9 @@ try {
   );
   if (!lobby.players.host?.host || lobby.players.guest?.host || lobby.match.phase !== 'select') {
     throw new Error('Signed host authority was not preserved');
+  }
+  if (lobby.players.host?.name !== 'Usion host' || lobby.players.guest?.name !== 'Usion guest') {
+    throw new Error('Signed Usion display names did not reach the authoritative lobby');
   }
   guest.command('ready', { ready: true });
   await host.waitFor(snapshot => snapshot.players.guest?.ready, 'Guest Ready did not sync');

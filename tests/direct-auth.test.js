@@ -150,6 +150,23 @@ test('accepts a verified legacy production token without host_id', async t => {
   assert.equal(identity.id, 'host');
   assert.equal(identity.roomId, ROOM_ID);
   assert.equal(identity.hostId, null);
+  assert.equal(identity.name, 'Player');
+});
+
+test('uses only the signed Usion display name and normalizes it for the game label', async t => {
+  const { key, verify } = await verifierFixture(t);
+  const identity = await verify(await customAccessToken(key.privateKey, {
+    claims: { name: '  Altan\n\tShagai  ' },
+  }));
+  assert.equal(identity.name, 'Altan Shagai');
+  const invalid = await verify(await customAccessToken(key.privateKey, {
+    claims: { name: { spoofed: true }, username: 'private-handle' },
+  }));
+  assert.equal(invalid.name, 'Player');
+  const missing = await verify(await customAccessToken(key.privateKey, {
+    claims: { username: 'private-handle' },
+  }));
+  assert.equal(missing.name, 'Player');
 });
 
 test('strictly validates registered JWT and identity claims', async t => {

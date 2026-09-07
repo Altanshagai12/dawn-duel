@@ -36,7 +36,7 @@ export class GameScene extends Phaser.Scene {
     this.add.image(MAP.width / 2, MAP.height / 2, 'battlefield')
       .setDisplaySize(MAP.width, MAP.height).setDepth(-20);
     this.drawMap();
-    this.views = new EntityViews(this, () => this.bridge.input?.(), () => this.bridge.language?.() || 'mn');
+    this.views = new EntityViews(this, () => this.bridge.input?.());
     this.fog = new FogView(this);
     this.scale.on('resize', size => this.resize(size.width, size.height));
     this.resize(this.scale.width, this.scale.height);
@@ -102,7 +102,7 @@ export function createGameBridge() {
   const bridge = {
     ready(value) { scene = value; readyResolve(value); },
     apply(snapshot) { pending = snapshot; scene?.applySnapshot(snapshot); },
-    aim() {}, attack() {}, language: () => 'mn',
+    aim() {}, attack() {},
     getSnapshot: () => pending,
   };
   const game = new Phaser.Game({

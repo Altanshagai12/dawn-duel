@@ -33,6 +33,12 @@ function optionalIdentityClaim(payload, key, maxLength) {
   return requiredIdentityClaim(payload, key, maxLength);
 }
 
+function verifiedDisplayName(payload) {
+  const value = typeof payload?.name === 'string' && payload.name.trim() ? payload.name : 'Player';
+  const normalized = String(value).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+  return (normalized || 'Player').slice(0, 24);
+}
+
 export function createAccessVerifier({ serviceId, jwksUrl }) {
   if (!serviceId || !jwksUrl) throw new Error('serviceId and jwksUrl are required');
   let keys = createRemoteJWKSet(new URL(jwksUrl), JWKS_OPTIONS);
@@ -87,7 +93,7 @@ export function createAccessVerifier({ serviceId, jwksUrl }) {
     }
     return {
       id,
-      name: String(payload.name || payload.preferred_username || payload.sub).slice(0, 24),
+      name: verifiedDisplayName(payload),
       roomId,
       sessionId,
       hostId,

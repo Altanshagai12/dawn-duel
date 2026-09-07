@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
-  heroDisplayName, shouldRecreateEntityView, structureBlocks,
+  playerDisplayName, shouldRecreateEntityView, structureBlocks,
 } from '../src/game/EntityViews.js';
 
 test('portrait phones keep the game upright inside the Usion mobile shell', () => {
@@ -15,12 +15,9 @@ test('portrait phones keep the game upright inside the Usion mobile shell', () =
   assert.doesNotMatch(html, /id="rotate-hint"/);
 });
 
-test('overhead labels use hero names instead of player ids', () => {
-  assert.equal(heroDisplayName('shana'), 'Шана');
-  assert.equal(heroDisplayName('diamond'), 'Даймонд');
-  assert.equal(heroDisplayName('scarlett'), 'Скарлетт');
-  assert.equal(heroDisplayName('hina'), 'Хина');
-  assert.equal(heroDisplayName('hina', 'en'), 'Hina');
+test('overhead labels use the verified Usion display name, never hero or player ids', () => {
+  assert.equal(playerDisplayName({ id: 'user-42', name: 'Altan Shagai', hero: 'hina' }), 'Altan Shagai');
+  assert.equal(playerDisplayName({ id: 'user-42', name: '', hero: 'hina' }), 'Player');
   assert.equal(shouldRecreateEntityView({ hero: 'shana' }, { kind: 'player', hero: 'hina' }), true);
 });
 
