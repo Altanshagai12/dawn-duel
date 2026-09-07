@@ -142,6 +142,16 @@ test('still rejects tokens minted for a different service', async t => {
   );
 });
 
+test('accepts a verified legacy production token without host_id', async t => {
+  const { key, verify } = await verifierFixture(t);
+  const identity = await verify(await customAccessToken(key.privateKey, {
+    claims: { host_id: undefined },
+  }));
+  assert.equal(identity.id, 'host');
+  assert.equal(identity.roomId, ROOM_ID);
+  assert.equal(identity.hostId, null);
+});
+
 test('strictly validates registered JWT and identity claims', async t => {
   const { key, verify } = await verifierFixture(t);
   const now = Math.floor(Date.now() / 1000);
@@ -157,7 +167,7 @@ test('strictly validates registered JWT and identity claims', async t => {
     ['wrong sub type', { subject: null, claims: { sub: 42 } }],
     ['empty room', { claims: { room_id: '' } }],
     ['wrong session type', { claims: { session_id: ['session'] } }],
-    ['missing host', { claims: { host_id: undefined } }],
+    ['null host', { claims: { host_id: null } }],
     ['wrong host type', { claims: { host_id: 7 } }],
     ['missing play permission', { claims: { permissions: ['spectate'] } }],
     ['oversized sub', { subject: 'u'.repeat(81) }],

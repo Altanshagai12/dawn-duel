@@ -414,9 +414,9 @@ function addPlayer(world, id, name = "Player") {
   if (!world.hostId) world.hostId = player.id;
   return player;
 }
-function establishHost(world, hostId) {
+function establishHost(world, hostId, options = {}) {
   const trustedHostId = String(hostId || "").slice(0, 80);
-  if (!trustedHostId || world.hostId && world.hostId !== trustedHostId) return false;
+  if (!trustedHostId || world.hostId && world.hostId !== trustedHostId && options.replace !== true) return false;
   world.hostId = trustedHostId;
   world.playerOrder.sort((left, right) => {
     if (left === trustedHostId) return -1;
@@ -1758,7 +1758,8 @@ function init(room) {
 }
 function onJoin(room, player) {
   const world = room.state.world;
-  if (player.hostId && !establishHost(world, player.hostId)) {
+  const hostOptions = { replace: player.replaceHost === true };
+  if (player.hostId && !establishHost(world, player.hostId, hostOptions)) {
     room.send(player.id, "duel_error", { code: "HOST_MISMATCH" });
     return;
   }
@@ -1767,7 +1768,7 @@ function onJoin(room, player) {
     room.send(player.id, "duel_error", { code: "ROOM_FULL" });
     return;
   }
-  if (player.hostId) establishHost(world, player.hostId);
+  if (player.hostId) establishHost(world, player.hostId, hostOptions);
   room.send(player.id, "duel_snapshot", filterSnapshot(world, player.id));
 }
 function onLeave(room, player) {

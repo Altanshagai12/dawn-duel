@@ -134,9 +134,9 @@ export function addPlayer(world, id, name = 'Player') {
   return player;
 }
 
-export function establishHost(world, hostId) {
+export function establishHost(world, hostId, options = {}) {
   const trustedHostId = String(hostId || '').slice(0, 80);
-  if (!trustedHostId || (world.hostId && world.hostId !== trustedHostId)) return false;
+  if (!trustedHostId || (world.hostId && world.hostId !== trustedHostId && options.replace !== true)) return false;
   world.hostId = trustedHostId;
   world.playerOrder.sort((left, right) => {
     if (left === trustedHostId) return -1;

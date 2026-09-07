@@ -28,6 +28,11 @@ function requiredIdentityClaim(payload, key, maxLength) {
   return value;
 }
 
+function optionalIdentityClaim(payload, key, maxLength) {
+  if (!Object.hasOwn(payload || {}, key)) return null;
+  return requiredIdentityClaim(payload, key, maxLength);
+}
+
 export function createAccessVerifier({ serviceId, jwksUrl }) {
   if (!serviceId || !jwksUrl) throw new Error('serviceId and jwksUrl are required');
   let keys = createRemoteJWKSet(new URL(jwksUrl), JWKS_OPTIONS);
@@ -73,7 +78,10 @@ export function createAccessVerifier({ serviceId, jwksUrl }) {
     const id = requiredIdentityClaim(payload, 'sub', 80);
     const roomId = requiredIdentityClaim(payload, 'room_id', 120);
     const sessionId = requiredIdentityClaim(payload, 'session_id', 120);
-    const hostId = requiredIdentityClaim(payload, 'host_id', 80);
+    // Production tokens minted before the host_id rollout do not carry this
+    // claim. They are still platform-signed and room/session bound. When the
+    // claim is present, keep validating it strictly and let it take precedence.
+    const hostId = optionalIdentityClaim(payload, 'host_id', 80);
     if (!Array.isArray(payload.permissions) || !payload.permissions.includes('play')) {
       throw new Error('Access token is missing play permission');
     }

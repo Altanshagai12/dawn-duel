@@ -50,6 +50,19 @@ test('signed host identity stays authoritative when the guest arrives first', ()
   assert.equal(world.hostId, 'host');
 });
 
+test('signed host can replace a provisional verified-token host before the match', () => {
+  const world = createWorld(7);
+  addPlayer(world, 'first', 'first');
+  assert.equal(world.hostId, 'first');
+  assert.equal(establishHost(world, 'signed-host'), false);
+  assert.equal(establishHost(world, 'signed-host', { replace: true }), true);
+  addPlayer(world, 'signed-host', 'signed-host');
+  assert.equal(establishHost(world, 'signed-host', { replace: true }), true);
+  assert.deepEqual(world.playerOrder, ['signed-host', 'first']);
+  assert.equal(world.players['signed-host'].team, 0);
+  assert.equal(world.players.first.team, 1);
+});
+
 test('ready and start validation rejects missing hero, absent rival, and host ready spoof', () => {
   const world = lobbyWorld(['host']);
   assert.equal(applyCommand(world, 'host', 'ready', { ready: true }), false);

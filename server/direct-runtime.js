@@ -43,9 +43,11 @@ export function createDirectRuntime(options) {
   }
 
   function createRoom(identity) {
+    const hostSigned = Boolean(identity.hostId);
     const room = {
       id: identity.roomId,
-      hostId: identity.hostId,
+      hostId: identity.hostId || identity.id,
+      signedHostId: identity.hostId || null,
       members: new Map(),
       state: null,
       ended: false,
@@ -53,6 +55,12 @@ export function createDirectRuntime(options) {
       emptyAt: 0,
       resultSessionId: identity.sessionId,
     };
+    if (!hostSigned) {
+      console.info(JSON.stringify({
+        event: 'host_compatibility_fallback',
+        reason: 'verified_token_missing_host_id',
+      }));
+    }
     const facade = {
       get state() { return room.state; },
       set state(value) { room.state = value; },
@@ -98,15 +106,30 @@ export function createDirectRuntime(options) {
   function join(session) {
     const identity = session.identity;
     let room = rooms.get(identity.roomId);
-    if (room && room.hostId !== identity.hostId) {
-      rejectSocket(session.socket, 'HOST_MISMATCH', 'Signed room host mismatch');
-      return;
-    }
     room ||= createRoom(identity);
     let member = room.members.get(identity.id);
     if (!member && room.members.size >= config.maxPlayers) {
       rejectSocket(session.socket, 'ROOM_FULL', 'Room already has two players');
       return;
+    }
+    let replaceHost = false;
+    if (identity.hostId) {
+      if (room.signedHostId && room.signedHostId !== identity.hostId) {
+        rejectSocket(session.socket, 'HOST_MISMATCH', 'Signed room host mismatch');
+        return;
+      }
+      if (!room.signedHostId) {
+        const hostIsParticipant = identity.id === identity.hostId || room.members.has(identity.hostId);
+        if (!hostIsParticipant || (room.state?.world?.phase !== 'select' && !member)) {
+          rejectSocket(session.socket, 'HOST_MISMATCH', 'Signed room host mismatch');
+          return;
+        }
+        room.signedHostId = identity.hostId;
+        if (room.state?.world?.phase === 'select' && room.hostId !== identity.hostId) {
+          room.hostId = identity.hostId;
+          replaceHost = true;
+        }
+      }
     }
     const reconnected = Boolean(member);
     if (member?.socket && member.socket !== session.socket) {
@@ -130,7 +153,12 @@ export function createDirectRuntime(options) {
       host_id: room.hostId,
       reconnected,
     });
-    onJoin(room.facade, { id: identity.id, name: identity.name, hostId: room.hostId });
+    onJoin(room.facade, {
+      id: identity.id,
+      name: identity.name,
+      hostId: room.hostId,
+      replaceHost,
+    });
     broadcast(room, 'player_joined', {
       room_id: room.id,
       player_id: identity.id,

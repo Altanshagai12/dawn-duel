@@ -25,7 +25,8 @@ export function init(room) {
 
 export function onJoin(room, player) {
   const world = room.state.world;
-  if (player.hostId && !establishHost(world, player.hostId)) {
+  const hostOptions = { replace: player.replaceHost === true };
+  if (player.hostId && !establishHost(world, player.hostId, hostOptions)) {
     room.send(player.id, 'duel_error', { code: 'HOST_MISMATCH' });
     return;
   }
@@ -34,7 +35,7 @@ export function onJoin(room, player) {
     room.send(player.id, 'duel_error', { code: 'ROOM_FULL' });
     return;
   }
-  if (player.hostId) establishHost(world, player.hostId);
+  if (player.hostId) establishHost(world, player.hostId, hostOptions);
   room.send(player.id, 'duel_snapshot', filterSnapshot(world, player.id));
 }
 

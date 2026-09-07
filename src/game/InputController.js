@@ -1,11 +1,18 @@
 const clamp = value => Math.max(-1, Math.min(1, value));
+const ROTATED_PORTRAIT = '(orientation: portrait) and (max-width: 760px)';
+
+export function toAppVector(x, y, rotated) {
+  return rotated ? { x: y, y: -x } : { x, y };
+}
 
 function bindStick(root, onMove, onRelease) {
   const knob = root.querySelector('i');
   const move = event => {
     const rect = root.getBoundingClientRect();
-    const dx = event.clientX - rect.left - rect.width / 2;
-    const dy = event.clientY - rect.top - rect.height / 2;
+    const physicalX = event.clientX - rect.left - rect.width / 2;
+    const physicalY = event.clientY - rect.top - rect.height / 2;
+    const rotated = globalThis.matchMedia?.(ROTATED_PORTRAIT).matches === true;
+    const { x: dx, y: dy } = toAppVector(physicalX, physicalY, rotated);
     const radius = rect.width * 0.34;
     const distance = Math.hypot(dx, dy) || 1;
     const scale = Math.min(1, radius / distance);

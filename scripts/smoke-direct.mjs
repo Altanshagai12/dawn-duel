@@ -61,14 +61,15 @@ async function waitForHealth() {
   throw new Error(`Direct runtime failed to boot\n${runtimeLog}`);
 }
 
-async function token(playerId, targetRoom, sessionId) {
-  return new SignJWT({
+async function token(playerId, targetRoom, sessionId, hostId = 'host') {
+  const claims = {
     room_id: targetRoom,
     service_id: serviceId,
     session_id: sessionId,
     permissions: ['play'],
-    host_id: 'host',
-  })
+  };
+  if (hostId !== null) claims.host_id = hostId;
+  return new SignJWT(claims)
     .setProtectedHeader({ alg: 'RS256', kid: jwk.kid, typ: 'JWT' })
     .setIssuer('usion-backend')
     .setAudience(`usion-game-service:${serviceId}`)
@@ -80,16 +81,17 @@ async function token(playerId, targetRoom, sessionId) {
 }
 
 class Client {
-  constructor(id, targetRoom = roomId) {
+  constructor(id, targetRoom = roomId, hostId = 'host') {
     this.id = id;
     this.roomId = targetRoom;
+    this.hostId = hostId;
     this.seq = 0;
     this.snapshots = [];
     this.waiters = [];
   }
   async connect(expectError = null) {
     this.sessionId = `session-${this.id}-${randomUUID()}`;
-    const accessToken = await token(this.id, this.roomId, this.sessionId);
+    const accessToken = await token(this.id, this.roomId, this.sessionId, this.hostId);
     this.socket = new WebSocket(`ws://127.0.0.1:${runtimePort}/ws?token=${encodeURIComponent(accessToken)}`);
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error(`${this.id} join timeout`)), 5000);
@@ -166,12 +168,57 @@ async function verifyJoinGate() {
   });
 }
 
+async function verifyHostlessCompatibility() {
+  const targetRoom = `compat-${randomUUID()}`;
+  const first = new Client('compat-first', targetRoom, null);
+  const second = new Client('compat-second', targetRoom, null);
+  extras.push(first, second);
+  const firstJoin = await first.connect();
+  const secondJoin = await second.connect();
+  if (firstJoin.host_id !== first.id || secondJoin.host_id !== first.id) {
+    throw new Error('Verified-token host fallback was not deterministic');
+  }
+  const intruder = new Client('compat-intruder', targetRoom, 'compat-intruder');
+  extras.push(intruder);
+  await intruder.connect('ROOM_FULL');
+  first.command('select_hero', { hero: 'shana' });
+  second.command('select_hero', { hero: 'scarlett' });
+  await first.waitFor(
+    snapshot => Object.values(snapshot.players).every(player => player.selected),
+    'Compatibility hero picks did not sync',
+  );
+  second.command('ready', { ready: true });
+  await first.waitFor(snapshot => snapshot.players[second.id]?.ready, 'Compatibility Ready did not sync');
+  first.command('start_match');
+  const live = await second.waitFor(
+    snapshot => snapshot.match.phase === 'playing',
+    'Compatibility host could not start the match',
+  );
+  if (!live.players[first.id]?.host || live.players[second.id]?.host) {
+    throw new Error('Compatibility host flags were incorrect');
+  }
+  second.drop();
+  const refreshed = new Client(second.id, targetRoom, second.id);
+  extras.push(refreshed);
+  const refreshedJoin = await refreshed.connect();
+  if (refreshedJoin.host_id !== first.id) {
+    throw new Error('Token rollout changed the effective host during live play');
+  }
+  const resumed = await refreshed.waitFor(
+    snapshot => snapshot.match.phase === 'playing' && snapshot.players[first.id]?.host,
+    'Signed-token refresh could not resume the compatibility match',
+  );
+  if (resumed.players[second.id]?.host) throw new Error('Token rollout changed live teams');
+}
+
 let host = new Client('host');
 let guest = new Client('guest');
 const extras = [];
 try {
   await waitForHealth();
   await verifyJoinGate();
+  await verifyHostlessCompatibility();
+  console.log('[smoke] verified tokens without host_id completed the lobby flow');
   await guest.connect();
   await host.connect();
   const intruder = new Client('intruder');
