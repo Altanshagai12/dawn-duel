@@ -5,10 +5,11 @@ import { stepWorld } from '../../server/sim.js';
 import { addPlayer, createWorld } from '../../server/world.js';
 
 export class LocalSession {
-  constructor() {
+  constructor(playerName = 'You') {
     this.mode = 'solo';
     this.world = createWorld((Date.now() ^ 0xdaa7) >>> 0);
-    addPlayer(this.world, 'local', 'You');
+    const displayName = typeof playerName === 'string' && playerName.trim() ? playerName : 'You';
+    addPlayer(this.world, 'local', displayName);
     addPlayer(this.world, 'bot', 'Night Rival');
     applyCommand(this.world, 'bot', 'select_hero', { hero: 'scarlett' });
     this.world.players.bot.ready = true;

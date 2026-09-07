@@ -1,7 +1,7 @@
 export function selectLaunchSession(launch, platform, current, createLocal) {
   if (launch.session) return launch.session;
   if (launch.multiplayer || platform.roomAssigned || current === platform) return platform;
-  return createLocal();
+  return createLocal(launch.config);
 }
 
 export class PlatformSession {

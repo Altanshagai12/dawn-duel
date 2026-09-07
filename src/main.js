@@ -90,7 +90,7 @@ async function boot() {
   }
 
   ui.setLanguage(languageFromPlatform(launch.config));
-  attach(selectLaunchSession(launch, platform, session, () => new LocalSession()));
+  attach(selectLaunchSession(launch, platform, session, config => new LocalSession(config?.userName)));
   await waitForSurface();
   const gameBridge = createGameBridge();
   bridge = gameBridge.bridge;

@@ -91,6 +91,17 @@ test('stale solo launch cannot replace an already promoted platform session', ()
   assert.equal(localCreated, false);
 });
 
+test('solo launch forwards the verified Usion config to the local session', () => {
+  const config = { userName: 'Altan Shagai' };
+  let received;
+  const selected = selectLaunchSession(
+    { multiplayer: false, config }, { roomAssigned: false }, undefined,
+    launchConfig => { received = launchConfig; return { mode: 'solo' }; },
+  );
+  assert.equal(selected.mode, 'solo');
+  assert.equal(received, config);
+});
+
 test('network quality recovery and realtime errors update session status', () => {
   const handlers = {};
   const statuses = [];
