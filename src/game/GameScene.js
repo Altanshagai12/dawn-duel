@@ -1,5 +1,7 @@
 import { EntityViews } from './EntityViews.js';
 import { FogView } from './FogView.js';
+import { ObjectiveViews } from './ObjectiveViews.js';
+import { cameraZoomForDisplay, displayMetricsForElement } from './display.js';
 import { MAP } from '../../server/config.js';
 import { campApproach } from '../../server/geometry.js';
 
@@ -20,7 +22,7 @@ export class GameScene extends Phaser.Scene {
 
   preload() {
     this.load.on('loaderror', file => console.error('[dawn-duel]', { event: 'asset_load_failed', key: file?.key, url: file?.url }));
-    this.load.image('battlefield', './assets/map/dawnfall-lane.webp');
+    this.load.image('battlefield', './assets/map/dawnfall-lane-v2.webp');
     this.load.image('tower', './assets/structures/tower.webp');
     this.load.image('core', './assets/structures/core.webp');
     this.load.image('arcBolt', './assets/effects/arc-bolt.webp');
@@ -36,10 +38,10 @@ export class GameScene extends Phaser.Scene {
     this.add.image(MAP.width / 2, MAP.height / 2, 'battlefield')
       .setDisplaySize(MAP.width, MAP.height).setDepth(-20);
     this.drawMap();
+    this.objectives = new ObjectiveViews(this);
     this.views = new EntityViews(this, () => this.bridge.input?.());
     this.fog = new FogView(this);
-    this.scale.on('resize', size => this.resize(size.width, size.height));
-    this.resize(this.scale.width, this.scale.height);
+    this.setDisplay(this.bridge.getDisplay());
     this.bindPointer();
     this.bridge.ready(this);
     if (this.latest) this.applySnapshot(this.latest);
@@ -57,6 +59,23 @@ export class GameScene extends Phaser.Scene {
       g.lineStyle(MAP.campPathRadius * 2, color, .045)
         .lineBetween(approach.x, approach.y, site.x, site.y);
       g.fillStyle(color, .05).fillCircle(site.x, site.y, MAP.campPocketRadius);
+      const angle = Math.atan2(approach.y - site.y, approach.x - site.x);
+      const gap = .52;
+      g.lineStyle(3, color, .3).beginPath()
+        .arc(site.x, site.y, MAP.campPocketRadius, angle + gap, angle + Math.PI * 2 - gap)
+        .strokePath();
+      const length = Math.hypot(approach.x - site.x, approach.y - site.y) || 1;
+      const normalX = -(approach.y - site.y) / length * MAP.campPathRadius;
+      const normalY = (approach.x - site.x) / length * MAP.campPathRadius;
+      g.lineStyle(2, color, .24)
+        .lineBetween(site.x + normalX, site.y + normalY, approach.x + normalX, approach.y + normalY)
+        .lineBetween(site.x - normalX, site.y - normalY, approach.x - normalX, approach.y - normalY);
+    }
+    for (const site of MAP.buffSites) {
+      const approach = campApproach(site);
+      const color = Number.parseInt(site.color.slice(1), 16);
+      g.lineStyle(MAP.buffPathRadius * 2, color, .055)
+        .lineBetween(approach.x, approach.y, site.x, site.y);
     }
     g.fillStyle(0x5de6df, .08).fillCircle(MAP.blueCoreX, MAP.blueCoreY, 150);
     g.fillStyle(0xff747b, .08).fillCircle(MAP.redCoreX, MAP.redCoreY, 150);
@@ -76,15 +95,16 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  resize(width) {
-    const zoom = Math.max(.68, Math.min(1.08, width / 1120));
-    this.cameras.main.setZoom(zoom);
+  setDisplay(metrics) {
+    if (!metrics) return;
+    this.cameras.main.setZoom(cameraZoomForDisplay(metrics));
   }
 
   applySnapshot(snapshot) {
     this.latest = snapshot;
     if (!this.views) return;
     const target = this.views.apply(snapshot);
+    this.objectives.apply(snapshot.buffSites, snapshot.now);
     this.fog.draw(snapshot.vision);
     if (target && this.cameras.main._follow !== target) {
       this.cameras.main.startFollow(target, true, .12, .12);
@@ -98,20 +118,43 @@ export function createGameBridge() {
   let scene;
   let pending;
   let readyResolve;
+  let display;
   const readyPromise = new Promise(resolve => { readyResolve = resolve; });
   const bridge = {
-    ready(value) { scene = value; readyResolve(value); },
+    ready(value) { scene = value; scene.setDisplay(display); readyResolve(value); },
     apply(snapshot) { pending = snapshot; scene?.applySnapshot(snapshot); },
+    setDisplay(value) { display = value; scene?.setDisplay(value); },
+    getDisplay: () => display,
     aim() {}, attack() {},
     getSnapshot: () => pending,
   };
+  const container = document.querySelector('#game');
+  display = displayMetricsForElement(container);
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'game',
     backgroundColor: '#071010',
     render: { antialias: true, pixelArt: false, roundPixels: false },
-    scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
+    scale: {
+      mode: Phaser.Scale.FIT,
+      autoCenter: Phaser.Scale.CENTER_BOTH,
+      width: display.renderWidth,
+      height: display.renderHeight,
+    },
     scene: [new GameScene(bridge)],
   });
+  let lastSize = `${display.renderWidth}x${display.renderHeight}`;
+  const resize = () => {
+    const next = displayMetricsForElement(container);
+    const key = `${next.renderWidth}x${next.renderHeight}`;
+    bridge.setDisplay(next);
+    if (key === lastSize) return;
+    lastSize = key;
+    game.scale.setGameSize(next.renderWidth, next.renderHeight);
+  };
+  const observer = globalThis.ResizeObserver ? new ResizeObserver(resize) : null;
+  observer?.observe(container);
+  window.addEventListener('resize', resize, { passive: true });
+  window.visualViewport?.addEventListener('resize', resize, { passive: true });
   return { bridge, game, ready: readyPromise };
 }

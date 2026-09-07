@@ -99,7 +99,8 @@ The four hero atlases, portraits, minion atlases, guardian atlases, and legacy
 ground texture are reused from the owner's Dawn Survivor repository. The
 diagonal battlefield, farm-site decal, tower/core structures, and projectile
 VFX were generated specifically for Dawn Duel. The authoritative collision map
-follows the battlefield's lane, four natural farm clearings, and their visible
-entrances; both server movement and client prediction share that geometry.
+follows the battlefield's lane, four natural farm clearings, two neutral buff
+clearings, and their visible entrances; both server movement and client
+prediction share that geometry.
 Gameplay code, layout, balance, network model, UI, structures, effects, and
 rules in this repository are new.

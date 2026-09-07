@@ -183,11 +183,20 @@ test('movement slides along a wall instead of sticking or crossing it', () => {
 
 test('continuous collision stops knockback at a farm wall instead of tunneling through it', () => {
   const { world, blue, red } = playingWorld(['diamond', 'shana']);
-  Object.assign(blue, { x: 400, y: 485 });
-  Object.assign(red, { x: 400, y: 655 });
+  const site = MAP.campSites[0];
+  const approach = campApproach(site);
+  const towardWall = normalize(site.x - approach.x, site.y - approach.y);
+  Object.assign(blue, {
+    x: site.x + towardWall.x * 20,
+    y: site.y + towardWall.y * 20,
+  });
+  Object.assign(red, {
+    x: site.x + towardWall.x * (MAP.campPocketRadius - red.radius - 4),
+    y: site.y + towardWall.y * (MAP.campPocketRadius - red.radius - 4),
+  });
   applyInput(world, blue.id, { seq: 1, moveX: 0, moveY: 0, aimX: 0, aimY: 1, skill2: true });
   updatePlayers(world, 1 / 30);
-  assert.ok(red.y < 695, `repulse crossed wall to ${red.y}`);
+  assert.ok(Math.hypot(red.x - site.x, red.y - site.y) <= MAP.campPocketRadius - red.radius + 0.001);
   assert.equal(isBattlefieldWalkable(red, red.radius), true);
 });
 

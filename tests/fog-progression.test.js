@@ -25,6 +25,35 @@ test('fog hides own projectiles and combat effects after they leave vision', () 
   assert.equal(snapshot.effects.length, 0);
 });
 
+test('fog hides a rival capture in an unlit buff clearing', () => {
+  const { world, blue, red } = playingWorld();
+  const site = world.buffSites[1];
+  blue.x = 150;
+  blue.y = 980;
+  red.x = site.x;
+  red.y = site.y;
+  site.available = true;
+  site.captureTeam = red.team;
+  site.captureProgress = 0.65;
+  const publicSite = filterSnapshot(world, blue.id).buffSites.find(candidate => candidate.id === site.id);
+  assert.equal(publicSite.visible, false);
+  assert.equal(publicSite.available, null);
+  assert.equal(publicSite.spawnAt, null);
+  assert.equal(publicSite.captureTeam, null);
+  assert.equal(publicSite.captureProgress, 0);
+});
+
+test('fog hides the completion and respawn timer of an unlit buff shrine', () => {
+  const { world, blue } = playingWorld();
+  const site = world.buffSites[1];
+  blue.x = 150;
+  blue.y = 980;
+  site.available = false;
+  site.spawnAt = 123.25;
+  const publicSite = filterSnapshot(world, blue.id).buffSites.find(candidate => candidate.id === site.id);
+  assert.deepEqual({ available: publicSite.available, spawnAt: publicSite.spawnAt }, { available: null, spawnAt: null });
+});
+
 test('visible projectile snapshots expose only renderer fields, never launch or combat state', () => {
   const { world, blue } = playingWorld();
   world.projectiles.push({

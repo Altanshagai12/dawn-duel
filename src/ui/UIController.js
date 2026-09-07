@@ -1,6 +1,7 @@
 import { copy } from './i18n.js';
 import { xpProgress } from '../../server/progression.js';
 import { HEROES } from '../../server/heroes.js';
+import { prepareCanvas } from '../game/display.js';
 
 const $ = selector => document.querySelector(selector);
 const clamp01 = value => Math.max(0, Math.min(1, Number(value) || 0));
@@ -14,6 +15,7 @@ export class UIController {
     this.lastDraft = null;
     this.lastWave = 0;
     this.lastDawnfall = false;
+    this.lastSurgeUntil = 0;
     this.toastTimer = 0;
     this.callbacks = {};
     $('#language').addEventListener('click', () => this.setLanguage(this.language === 'mn' ? 'en' : 'mn'));
@@ -172,6 +174,10 @@ export class UIController {
     $('#shield-bar').style.width = pct((you.shield || 0) / you.maxHp);
     $('#shield-bar').style.left = '0';
     $('#xp-bar').style.width = pct(xpProgress(you).ratio);
+    const buffRemaining = Math.max(0, Math.ceil((you.surgeUntil || 0) - snapshot.now));
+    const buffStatus = $('#buff-status');
+    buffStatus.textContent = `${this.t().surge} · ${buffRemaining}s`;
+    buffStatus.classList.toggle('is-hidden', buffRemaining <= 0);
     this.updateChoices(you, snapshot.now);
     this.updateCooldowns(you, snapshot.now);
     this.drawMinimap(snapshot);
@@ -221,10 +227,12 @@ export class UIController {
     if (snapshot.match.paused) text = this.t().paused;
     else if (snapshot.match.phase === 'countdown') text = `${this.t().countdown} ${Math.ceil(snapshot.match.countdown)}`;
     else if (player.spiritUntil > snapshot.now) text = `${this.t().spirit} ${Math.ceil(player.spiritUntil - snapshot.now)}`;
+    else if ((player.surgeUntil || 0) > snapshot.now && player.surgeUntil > this.lastSurgeUntil) text = `${this.t().surge} · 30s`;
     else if (snapshot.match.dawnfall && !this.lastDawnfall) text = this.t().dawnfall;
     else if (snapshot.match.wave > this.lastWave) text = `${this.t().wave} ${snapshot.match.wave}`;
     this.lastWave = snapshot.match.wave;
     this.lastDawnfall = snapshot.match.dawnfall;
+    this.lastSurgeUntil = Math.max(this.lastSurgeUntil, player.surgeUntil || 0);
     const node = $('#announcement');
     node.textContent = text;
     node.classList.toggle('on', Boolean(text));
@@ -236,11 +244,11 @@ export class UIController {
 
   drawMinimap(snapshot) {
     const canvas = $('#minimap');
-    const ctx = canvas.getContext('2d');
-    const sx = canvas.width / snapshot.map.width;
-    const sy = canvas.height / snapshot.map.height;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#0b1b1b'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const { ctx, width, height } = prepareCanvas(canvas);
+    const sx = width / snapshot.map.width;
+    const sy = height / snapshot.map.height;
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = '#0b1b1b'; ctx.fillRect(0, 0, width, height);
     ctx.strokeStyle = '#425c52';
     ctx.lineWidth = snapshot.map.laneWidth * Math.min(sx, sy);
     ctx.lineCap = 'round';
@@ -253,6 +261,18 @@ export class UIController {
     ctx.stroke();
     ctx.fillStyle = 'rgba(78,230,224,.16)';
     for (const source of snapshot.vision) ctx.beginPath(), ctx.arc(source.x * sx, source.y * sy, Math.max(2, source.radius * sx), 0, Math.PI * 2), ctx.fill();
+    for (const site of snapshot.buffSites || []) {
+      if (site.visible === false) continue;
+      ctx.beginPath();
+      ctx.arc(site.x * sx, site.y * sy, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = site.available ? site.color : 'rgba(180,190,187,.24)';
+      ctx.fill();
+      if (site.available) {
+        ctx.strokeStyle = site.color;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
     for (const structure of Object.values(snapshot.structures)) this.dot(ctx, structure, sx, sy, structure.team ? '#ff6b72' : '#4ee6e0', structure.kind === 'core' ? 5 : 3);
     for (const minion of snapshot.minions) this.dot(ctx, minion, sx, sy, minion.team ? '#ff858b' : '#75f3ed', 1.5);
     for (const player of Object.values(snapshot.players)) if (Number.isFinite(player.x)) this.dot(ctx, player, sx, sy, player.id === snapshot.you ? '#f5c66a' : '#ff6b72', 3);

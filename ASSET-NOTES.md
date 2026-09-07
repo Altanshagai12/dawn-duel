@@ -28,3 +28,14 @@ encoded as WebP for mobile delivery:
 
 The structure and effect sprites use neutral highlights so the renderer can
 tint them per team. They contain no logos, text, or third-party game artwork.
+
+## Clear battlefield v2
+
+`assets/map/dawnfall-lane-v2.webp` was created with the built-in OpenAI image
+generation workflow in create mode on 2026-09-07, then resized to 2000×1125 and
+encoded as WebP for mobile delivery. Generation prompt summary: top-down 16:9
+competitive fantasy MOBA battlefield; one clear diagonal stone midlane from a
+blue lower-left base to a red upper-right base; four jungle guardian clearings
+with visible entrances and enclosing rock/root walls; exactly two neutral
+river-side buff shrine clearings, cyan and violet; no characters, towers, UI,
+text, or logos; polished high-detail environment with readable traversal.

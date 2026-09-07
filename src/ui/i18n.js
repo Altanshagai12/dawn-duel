@@ -15,7 +15,7 @@ export const copy = {
     hint: 'Usion-ийн Share товчоор найзаа урьж бодит тулаан эхлүүлээрэй.',
     upgrade: 'DAWN САЙЖРУУЛАЛТ', relic: 'ХАМГААЛАГЧИЙН RELIC', reroll: '↻ ДАХИН СОНГОХ',
     wave: 'ДАВАЛГАА', paused: 'ӨРСӨЛДӨГЧ ДАХИН ХОЛБОГДОЖ БАЙНА', spirit: 'ШАРХДСАН СҮНС', countdown: 'ТУЛААН',
-    dawnfall: 'DAWNFALL · ДАРАМТ ЦӨМИЙГ ЭВДЭНЭ',
+    dawnfall: 'DAWNFALL · ДАРАМТ ЦӨМИЙГ ЭВДЭНЭ', surge: 'DAWN SURGE',
     skills: {
       shana: ['PRECISION', 'VOLLEY'], diamond: ['AEGIS', 'REPULSE'],
       scarlett: ['EMBER LINE', 'CINDER'], hina: ['SHADOW STEP', 'MOON SNARE'],
@@ -49,7 +49,7 @@ export const copy = {
     reconnecting: 'CONNECTION LOST', victory: 'VICTORY', defeat: 'DEFEAT', draw: 'DRAW', again: 'Practice again',
     hint: 'Use Usion Share to invite a friend and start a real duel.', upgrade: 'DAWN UPGRADE', relic: 'GUARDIAN RELIC', reroll: '↻ REROLL',
     wave: 'WAVE', paused: 'RIVAL IS RECONNECTING', spirit: 'WOUNDED SPIRIT', countdown: 'BATTLE',
-    dawnfall: 'DAWNFALL · PRESSURE BREAKS THE CORE',
+    dawnfall: 'DAWNFALL · PRESSURE BREAKS THE CORE', surge: 'DAWN SURGE',
     skills: {
       shana: ['PRECISION', 'VOLLEY'], diamond: ['AEGIS', 'REPULSE'],
       scarlett: ['EMBER LINE', 'CINDER'], hina: ['SHADOW STEP', 'MOON SNARE'],

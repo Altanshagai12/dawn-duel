@@ -49,13 +49,15 @@ export function isBattlefieldWalkable(point, radius = 0) {
   const end = { x: MAP.redCoreX, y: MAP.redCoreY };
   const laneRadius = Math.max(0, MAP.laneWidth / 2 - radius);
   if (segmentDistanceSquared(point, start, end) <= laneRadius ** 2) return true;
-  const pocketRadius = Math.max(0, MAP.campPocketRadius - radius);
-  const pathRadius = Math.max(0, MAP.campPathRadius - radius);
-  return MAP.campSites.some(site => {
+  const connectedToLane = (site, pocketSize, pathSize) => {
+    const pocketRadius = Math.max(0, pocketSize - radius);
+    const pathRadius = Math.max(0, pathSize - radius);
     const approach = campApproach(site);
     const inPocket = (point.x - site.x) ** 2 + (point.y - site.y) ** 2 <= pocketRadius ** 2;
     return inPocket || segmentDistanceSquared(point, approach, site) <= pathRadius ** 2;
-  });
+  };
+  return MAP.campSites.some(site => connectedToLane(site, MAP.campPocketRadius, MAP.campPathRadius))
+    || MAP.buffSites.some(site => connectedToLane(site, MAP.buffPocketRadius, MAP.buffPathRadius));
 }
 
 export function resolveWalkableMove(origin, desired, radius = 0, blocked = () => false) {

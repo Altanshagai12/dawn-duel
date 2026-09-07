@@ -1,5 +1,6 @@
-import { MAP, STRUCTURES } from '../../server/config.js';
+import { MAP, PLAYER, STRUCTURES } from '../../server/config.js';
 import { resolveWalkableMove } from '../../server/geometry.js';
+import { derivedStats } from '../../server/progression.js';
 
 const HERO_SCALE = { shana: .43, diamond: .42, scarlett: .43, hina: .43 };
 const MINION_TEXTURE = { melee: 'wingling', ranged: 'spitter', siege: 'brute' };
@@ -18,6 +19,13 @@ export function structureBlocks(structures, point, radius) {
 
 export function shouldRecreateEntityView(previous, next) {
   return (next.kind === 'player' || next.kind === 'clone') && previous.hero !== next.hero;
+}
+
+export function predictionSpeed(player, now) {
+  let speed = derivedStats(player, now).speed;
+  if ((player.slowUntil || 0) > now) speed *= 1 - Math.max(0, Math.min(.3, player.slowRatio || 0));
+  if ((player.spiritUntil || 0) > now) speed *= PLAYER.woundedSpeedRatio;
+  return speed;
 }
 
 function directionRow(dx, dy) {
@@ -87,6 +95,7 @@ export class EntityViews {
 
   apply(snapshot) {
     this.localId = snapshot.you;
+    this.snapshotNow = snapshot.now;
     this.structures = Object.values(snapshot.structures);
     const entities = [
       ...Object.values(snapshot.players).filter(entity => Number.isFinite(entity.x) && entity.hero),
@@ -146,9 +155,10 @@ export class EntityViews {
         const scale = magnitude > 0 ? magnitude / Math.hypot(input.moveX, input.moveY) : 0;
         const moveX = (input?.moveX || 0) * scale;
         const moveY = (input?.moveY || 0) * scale;
+        const speed = predictionSpeed(view.entity, this.snapshotNow || 0);
         const predicted = resolveWalkableMove(view.root, {
-          x: Phaser.Math.Clamp(view.root.x + moveX * 180 * delta / 1000, 21, MAP.width - 21),
-          y: Phaser.Math.Clamp(view.root.y + moveY * 180 * delta / 1000, 21, MAP.height - 21),
+          x: Phaser.Math.Clamp(view.root.x + moveX * speed * delta / 1000, 21, MAP.width - 21),
+          y: Phaser.Math.Clamp(view.root.y + moveY * speed * delta / 1000, 21, MAP.height - 21),
         }, radius, blocked);
         view.root.x = predicted.x;
         view.root.y = predicted.y;

@@ -236,7 +236,7 @@ export function updatePlayers(world, dt) {
     }
     if (player.cinderUntil <= world.matchTime) player.cinderCharges = 0;
     if (player.spiritUntil && player.spiritUntil <= world.matchTime) player.spiritUntil = 0;
-    const stats = derivedStats(player);
+    const stats = derivedStats(player, world.matchTime);
     player.maxHp = stats.maxHp;
     let speed = stats.speed * (1 - player.slowRatio);
     if (player.spiritUntil > world.matchTime) speed *= PLAYER.woundedSpeedRatio;
@@ -284,6 +284,6 @@ export function updatePlayers(world, dt) {
   resolveInstantIntents(world, instantIntents);
   for (const clone of world.clones) {
     const owner = world.players[clone.ownerId];
-    if (owner) updateClone(world, clone, derivedStats(owner));
+    if (owner) updateClone(world, clone, derivedStats(owner, world.matchTime));
   }
 }

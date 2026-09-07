@@ -21,13 +21,19 @@ export const MAP = Object.freeze({
   laneWidth: 300,
   campPocketRadius: 118,
   campPathRadius: 68,
+  buffPocketRadius: 92,
+  buffPathRadius: 56,
   riverProgress: 893.5358135,
   fountainEdge: 230,
   campSites: [
-    { x: 445, y: 570, side: 0 },
-    { x: 760, y: 900, side: 0 },
-    { x: 1555, y: 555, side: 1 },
-    { x: 1240, y: 225, side: 1 },
+    { x: 480, y: 250, side: 0 },
+    { x: 930, y: 960, side: 0 },
+    { x: 1520, y: 875, side: 1 },
+    { x: 1070, y: 165, side: 1 },
+  ],
+  buffSites: [
+    { id: 'tide', x: 780, y: 385, color: '#62e9ff' },
+    { id: 'veil', x: 1220, y: 740, color: '#c487ff' },
   ],
 });
 
@@ -96,6 +102,15 @@ export const CAMPS = Object.freeze({
   aegis: { hp: 950, radius: 34, damage: 54, cooldown: 1.2, windup: 0.5, strikeRadius: 72, slow: 0.2, slowSeconds: 0.8, xp: 140 },
   tempo: { hp: 1200, radius: 38, damage: 66, cooldown: 1.35, windup: 0.58, strikeRadius: 92, knockback: 45, xp: 180 },
   relicSeconds: 45,
+});
+
+export const BUFFS = Object.freeze({
+  firstSpawnSeconds: 30,
+  respawnSeconds: 75,
+  captureSeconds: 1.25,
+  effectSeconds: 30,
+  damageBonus: 0.05,
+  speedBonus: 0.05,
 });
 
 export const VISION = Object.freeze({

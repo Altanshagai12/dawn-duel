@@ -4,7 +4,7 @@ const files = [
   ...['shana', 'diamond', 'scarlett', 'hina'].flatMap(id => [`assets/heroes/${id}.webp`, `assets/portraits/${id}.webp`]),
   ...['wingling', 'spitter', 'brute', 'bomber'].map(id => `assets/minions/${id}.webp`),
   'assets/guardians/eclipse.webp', 'assets/guardians/stag.webp', 'assets/map/night-soil.webp',
-  'assets/map/dawnfall-lane.webp', 'assets/map/farm-site.webp',
+  'assets/map/dawnfall-lane.webp', 'assets/map/dawnfall-lane-v2.webp', 'assets/map/farm-site.webp',
   'assets/structures/tower.webp', 'assets/structures/core.webp', 'assets/effects/arc-bolt.webp',
 ];
 for (const file of files) {

@@ -58,6 +58,22 @@
   .choice-tray .chip { min-height: 22px; margin-top: 4px; padding: 4px 7px; }
 }
 
+@media (orientation: landscape) and (max-height: 520px) {
+  .topbar { top: max(5px, var(--safe-top)); transform: translateX(-50%) scale(.78); transform-origin: top center; }
+  .network { top: max(52px, calc(var(--safe-top) + 48px)); left: max(8px, var(--safe-left)); padding: 5px 7px; }
+  #minimap { top: max(78px, calc(var(--safe-top) + 74px)); left: max(8px, var(--safe-left)); width: clamp(112px, 16vw, 146px); height: auto; aspect-ratio: 16 / 9; }
+  .stick, .stick--aim { width: 102px; height: 102px; }
+  .stick { left: max(18px, var(--safe-left)); bottom: max(17px, var(--safe-bottom)); }
+  .action-cluster { right: max(15px, var(--safe-right)); bottom: max(14px, var(--safe-bottom)); width: 204px; height: 132px; }
+  .stick--aim { right: 0; bottom: 0; left: auto; }
+  .skill { width: 56px; height: 56px; }
+  #skill-1 { left: 20px; bottom: 61px; }
+  #skill-2 { left: 4px; bottom: 0; }
+  .player-bars { bottom: max(8px, var(--safe-bottom)); width: min(244px, 32vw); padding: 7px 9px; }
+  .choice-stack { top: max(64px, calc(var(--safe-top) + 60px)); right: max(8px, var(--safe-right)); width: min(330px, 39vw); }
+  .announcement { top: 19%; font-size: 11px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }

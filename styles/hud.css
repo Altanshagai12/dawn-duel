@@ -21,6 +21,7 @@
 .player-bars u { top: 0; bottom: auto; height: 2px; background: #f1fbff; text-decoration: none; box-shadow: 0 0 7px #d7f8ff; }
 .player-bars .xp { height: 3px; margin-top: 4px; }
 .player-bars .xp em { background: var(--violet); }
+.buff-status { position: absolute; left: 50%; bottom: calc(100% + 7px); padding: 4px 9px; transform: translateX(-50%); border: 1px solid rgba(98,233,255,.5); border-radius: 99px; color: #9af3ff; background: rgba(3,15,17,.82); font-size: 8px; font-weight: 900; letter-spacing: .1em; white-space: nowrap; box-shadow: 0 0 18px rgba(98,233,255,.18); }
 .announcement { position: absolute; top: 23%; left: 50%; transform: translate(-50%,-8px); opacity: 0; padding: 9px 16px; background: rgba(4,14,15,.8); border: 1px solid var(--line); font-size: 13px; font-weight: 900; letter-spacing: .12em; transition: .2s; }
 .announcement.on { opacity: 1; transform: translate(-50%,0); }
 

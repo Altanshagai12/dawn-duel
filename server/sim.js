@@ -1,4 +1,5 @@
 import { MATCH } from './config.js';
+import { updateBuffSites } from './buffs.js';
 import { updateCamps } from './camps.js';
 import { cleanupDead, updateBurns } from './combat.js';
 import { updateEffects } from './effects.js';
@@ -116,6 +117,7 @@ export function stepWorld(world, dt) {
   }
   updateOffers(world);
   updatePlayers(world, step);
+  updateBuffSites(world, step);
   updateMinions(world, step);
   updateStructures(world);
   updateCamps(world, step);

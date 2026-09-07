@@ -1,17 +1,20 @@
-import { PLAYER, RELICS, UPGRADES, XP_THRESHOLDS } from './config.js';
+import { BUFFS, PLAYER, RELICS, UPGRADES, XP_THRESHOLDS } from './config.js';
 import { seededOrder } from './random.js';
 
 const CHOICE_SECONDS = 12;
 
-export function derivedStats(player) {
+export function derivedStats(player, now = 0) {
   const rank = id => Math.min(UPGRADES[id].maxRank, Math.max(0, Number(player.ranks[id] || 0)));
+  const surge = (player.surgeUntil || 0) > now;
+  const damageBonus = surge ? BUFFS.damageBonus : 0;
+  const speedBonus = surge ? BUFFS.speedBonus : 0;
   return {
     maxHp: PLAYER.hp + rank('vitality') * UPGRADES.vitality.amount,
-    basicDamage: PLAYER.attackDamage * (1 + Math.min(0.15, rank('edge') * UPGRADES.edge.amount)),
-    skillDamage: 1 + Math.min(0.18, rank('arcana') * UPGRADES.arcana.amount),
+    basicDamage: PLAYER.attackDamage * (1 + Math.min(0.2, rank('edge') * UPGRADES.edge.amount + damageBonus)),
+    skillDamage: 1 + Math.min(0.23, rank('arcana') * UPGRADES.arcana.amount + damageBonus),
     basicReduction: Math.min(0.08, rank('guard') * UPGRADES.guard.amount),
     skillReduction: Math.min(0.08, rank('ward') * UPGRADES.ward.amount),
-    speed: PLAYER.speed * (1 + Math.min(0.09, rank('swift') * UPGRADES.swift.amount)),
+    speed: PLAYER.speed * (1 + Math.min(0.14, rank('swift') * UPGRADES.swift.amount + speedBonus)),
     cooldown: 1 - Math.min(0.08, rank('haste') * UPGRADES.haste.amount),
   };
 }
