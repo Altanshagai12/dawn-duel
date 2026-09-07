@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MAP, PLAYER } from '../server/config.js';
+import { MAP, PLAYER, STRUCTURES } from '../server/config.js';
 import { applyDamage, updateBurns } from '../server/combat.js';
-import { isBattlefieldWalkable, lanePoint, laneProgress, teamDirection } from '../server/geometry.js';
+import {
+  campApproach, isBattlefieldWalkable, laneOffset, lanePoint, laneProgress,
+  resolveWalkableMove, teamDirection, traceWalkableMove,
+} from '../server/geometry.js';
 import { applyInput } from '../server/inputs.js';
 import { updateMinions, updateStructures } from '../server/lane.js';
 import { updatePlayers } from '../server/players.js';
 import { spawnProjectile, updateProjectiles } from '../server/projectiles.js';
+import { normalize } from '../server/math.js';
 import { resetPlayerAtFountain } from '../server/world.js';
 import { playingWorld } from './helpers.js';
 
@@ -140,6 +144,151 @@ test('heroes stay on the lane and can enter symmetric farm pockets', () => {
     assert.equal(MAP.height - left.y, right.y);
     assert.equal(left.side, 1 - right.side);
   }
+});
+
+test('farm walls are solid except for their visible lane entrances', () => {
+  for (const site of MAP.campSites) {
+    const approach = campApproach(site);
+    const entry = { x: (site.x + approach.x) / 2, y: (site.y + approach.y) / 2 };
+    const direction = normalize(approach.x - site.x, approach.y - site.y);
+    const tangent = { x: -direction.y, y: direction.x };
+    const inside = {
+      x: site.x + tangent.x * (MAP.campPocketRadius - PLAYER.radius - 2),
+      y: site.y + tangent.y * (MAP.campPocketRadius - PLAYER.radius - 2),
+    };
+    const wall = {
+      x: site.x + tangent.x * (MAP.campPocketRadius + 5),
+      y: site.y + tangent.y * (MAP.campPocketRadius + 5),
+    };
+    assert.equal(isBattlefieldWalkable(entry, PLAYER.radius), true);
+    assert.equal(isBattlefieldWalkable(inside, PLAYER.radius), true);
+    assert.equal(isBattlefieldWalkable(wall, PLAYER.radius), false);
+  }
+});
+
+test('movement slides along a wall instead of sticking or crossing it', () => {
+  const progress = MAP.riverProgress;
+  const allowedOffset = MAP.laneWidth / 2 - PLAYER.radius;
+  const origin = lanePoint(progress, allowedOffset - 0.5);
+  const desired = {
+    x: origin.x + MAP.laneUnitX * 12 + MAP.laneNormalX * 10,
+    y: origin.y + MAP.laneUnitY * 12 + MAP.laneNormalY * 10,
+  };
+  const resolved = resolveWalkableMove(origin, desired, PLAYER.radius);
+  assert.equal(isBattlefieldWalkable(desired, PLAYER.radius), false);
+  assert.equal(isBattlefieldWalkable(resolved, PLAYER.radius), true);
+  assert.ok(laneProgress(resolved) > laneProgress(origin));
+  assert.ok(laneOffset(resolved) <= allowedOffset + 0.001);
+});
+
+test('continuous collision stops knockback at a farm wall instead of tunneling through it', () => {
+  const { world, blue, red } = playingWorld(['diamond', 'shana']);
+  Object.assign(blue, { x: 400, y: 485 });
+  Object.assign(red, { x: 400, y: 655 });
+  applyInput(world, blue.id, { seq: 1, moveX: 0, moveY: 0, aimX: 0, aimY: 1, skill2: true });
+  updatePlayers(world, 1 / 30);
+  assert.ok(red.y < 695, `repulse crossed wall to ${red.y}`);
+  assert.equal(isBattlefieldWalkable(red, red.radius), true);
+});
+
+test('projectiles collide with farm walls and cannot damage guardians through terrain', () => {
+  const { world, blue } = playingWorld();
+  const camp = world.camps[0];
+  camp.alive = true;
+  const source = lanePoint(laneProgress(camp) + 180);
+  const direction = normalize(camp.x - source.x, camp.y - source.y);
+  const trace = traceWalkableMove(source, camp, 8);
+  assert.equal(trace.blocked, true);
+  const hp = camp.hp;
+  const shot = spawnProjectile(world, {
+    ownerId: blue.id, team: blue.team, x: source.x, y: source.y,
+    dx: direction.x, dy: direction.y, speed: 1000, range: 600, damage: 500,
+  });
+  for (let step = 0; step < 20 && shot.alive; step += 1) updateProjectiles(world, 1 / 30);
+  assert.equal(shot.alive, false);
+  assert.equal(camp.hp, hp);
+});
+
+test('area skills cannot damage guardians through farm walls', () => {
+  const { world, blue } = playingWorld(['diamond', 'shana']);
+  const camp = world.camps[0];
+  camp.alive = true;
+  const source = { x: 401.11876474610403, y: 733.0908807315648 };
+  Object.assign(blue, source);
+  const hp = camp.hp;
+  const direction = normalize(camp.x - source.x, camp.y - source.y);
+  assert.equal(traceWalkableMove(source, camp, 0).blocked, true);
+  applyInput(world, blue.id, {
+    seq: 1, moveX: 0, moveY: 0, aimX: direction.x, aimY: direction.y, skill2: true,
+  });
+  updatePlayers(world, 1 / 30);
+  assert.equal(camp.hp, hp);
+});
+
+test('production hero attacks cannot offset their muzzle across a farm wall', () => {
+  const { world, blue } = playingWorld(['shana', 'diamond']);
+  const camp = world.camps[0];
+  camp.alive = true;
+  Object.assign(blue, { x: 437.5, y: 714 });
+  const direction = normalize(camp.x - blue.x, camp.y - blue.y);
+  applyInput(world, blue.id, {
+    seq: 1, moveX: 0, moveY: 0, aimX: direction.x, aimY: direction.y, attack: true,
+  });
+  updatePlayers(world, 1 / 30);
+  const shot = world.projectiles.at(-1);
+  assert.ok(shot);
+  assert.equal(shot.alive, false);
+  const hp = camp.hp;
+  for (let step = 0; step < 20; step += 1) updateProjectiles(world, 1 / 30);
+  assert.equal(camp.hp, hp);
+});
+
+test('ranged minions must enter tower range before attacking and become targetable there', () => {
+  for (const minionType of ['ranged', 'siege']) {
+    const { world, red } = playingWorld();
+    red.spiritUntil = 999;
+    const tower = world.structures.redTower;
+    const minion = {
+      id: `range-${minionType}`, kind: 'minion', minionType, team: 0,
+      x: tower.x - STRUCTURES.tower.range - 15, y: tower.y,
+      radius: minionType === 'siege' ? 22 : 16, hp: 520, maxHp: 520,
+      damageScale: 1, attackReadyAt: 0, targetId: null,
+      laneOffset: laneOffset({ x: tower.x - STRUCTURES.tower.range - 15, y: tower.y }),
+    };
+    world.minions.push(minion);
+    const towerHp = tower.hp;
+    updateMinions(world, 0.1);
+    assert.equal(tower.hp, towerHp);
+    assert.ok(Math.sqrt((minion.x - tower.x) ** 2 + (minion.y - tower.y) ** 2) < STRUCTURES.tower.range + 15);
+
+    minion.x = tower.x - STRUCTURES.tower.range + 5;
+    minion.y = tower.y;
+    minion.attackReadyAt = 0;
+    const minionHp = minion.hp;
+    updateMinions(world, 0);
+    updateStructures(world);
+    assert.ok(tower.hp < towerHp);
+    assert.ok(minion.hp < minionHp);
+  }
+});
+
+test('hero projectiles cannot damage a tower from outside its visible range', () => {
+  const { world, blue, red } = playingWorld();
+  red.spiritUntil = 999;
+  const tower = world.structures.redTower;
+  const launch = distance => {
+    spawnProjectile(world, {
+      ownerId: blue.id, team: blue.team,
+      sourceX: tower.x - distance, sourceY: tower.y,
+      x: tower.x - distance + 28, y: tower.y,
+      dx: 1, dy: 0, speed: 1000, range: 500, damage: 100,
+    });
+    for (let step = 0; step < 6; step += 1) updateProjectiles(world, 0.1);
+  };
+  launch(STRUCTURES.tower.range + 40);
+  assert.equal(tower.hp, tower.maxHp);
+  launch(STRUCTURES.tower.range - 20);
+  assert.ok(tower.hp < tower.maxHp);
 });
 
 test('lethal lane shots keep their battlefield impact coordinates', () => {

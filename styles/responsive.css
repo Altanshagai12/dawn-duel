@@ -16,28 +16,25 @@
 }
 
 @media (orientation: portrait) and (max-width: 760px) {
-  #app {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    width: 100vh;
-    width: 100dvh;
-    height: 100vw;
-    height: 100dvw;
-    transform: translate(-50%, -50%) rotate(90deg);
-    transform-origin: center;
-  }
-  .hero-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); max-height: none; overflow: visible; }
-  .hero-card { min-height: 145px; }
-  .hero-card img { height: 105px; }
-  .hero-card span { display: none; }
-  .select-panel { max-height: 94vw; overflow: auto; }
-  .draft-actions { flex-direction: row; align-items: center; }
-  .draft-action { width: auto; min-width: 150px; min-height: 42px; }
   .topbar { transform: translateX(-50%) scale(.82); transform-origin: top; }
   .controls { opacity: .92; }
-  .player-bars { width: 240px; }
-  .choice-stack { top: 72px; width: min(330px, 40vh); max-height: calc(100vw - 150px); overflow-y: auto; scrollbar-width: thin; }
+  .player-bars { width: 44vw; }
+}
+
+@media (orientation: portrait) and (max-width: 760px) and (max-height: 640px) {
+  .screen { place-items: start center; overflow-y: auto; touch-action: pan-y; }
+  .select-panel { margin: 8px 0; padding: 14px; }
+  .select-panel h2 { font-size: 24px; }
+  .hero-grid { gap: 7px; margin: 10px 0; max-height: none; overflow: visible; }
+  .hero-card { min-height: 128px; }
+  .hero-card img { height: 94px; }
+  .hero-card div { inset: auto 9px 8px; }
+  .hero-card strong { font-size: 14px; }
+  .hero-card span { display: none; }
+  .hero-card small { margin-top: 3px; font-size: 7px; }
+  .draft-actions { gap: 8px; margin-top: 6px; }
+  .draft-action { min-height: 44px; }
+  .player-bars { bottom: 124px; width: 46vw; padding: 6px 8px; }
 }
 
 @media (max-height: 470px) {

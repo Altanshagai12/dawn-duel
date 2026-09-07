@@ -25,6 +25,21 @@ test('fog hides own projectiles and combat effects after they leave vision', () 
   assert.equal(snapshot.effects.length, 0);
 });
 
+test('visible projectile snapshots expose only renderer fields, never launch or combat state', () => {
+  const { world, blue } = playingWorld();
+  world.projectiles.push({
+    id: 'visible-shot', kind: 'projectile', team: blue.team,
+    projectileType: 'precision', x: blue.x, y: blue.y, dx: 1, dy: 0, radius: 11,
+    sourceX: 12, sourceY: 34, ownerId: blue.id, remaining: 472, speed: 900,
+    damage: 170, damageClass: 'skill', status: { reveal: 2.5 }, pierces: 2,
+    hitIds: ['secret-target'], alive: true,
+  });
+  const [projectile] = filterSnapshot(world, blue.id).projectiles;
+  assert.deepEqual(Object.keys(projectile).sort(), [
+    'dx', 'dy', 'id', 'kind', 'projectileType', 'radius', 'team', 'x', 'y',
+  ]);
+});
+
 test('hero selection stays private until the draft closes', () => {
   const { world, blue, red } = playingWorld(['shana', 'hina']);
   world.phase = 'select';

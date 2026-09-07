@@ -85,8 +85,9 @@ codes, matchmaking, invite, wager, or payment UI.
 Production registration uses `connection_mode: direct`, two players, and the
 dedicated `/ws` server deployed from this repository. The server validates Usion
 RS256 access tokens against the platform JWKS and runs as exactly one replica so
-room state stays authoritative. The signed `host_id` fixes host/team ownership
-even when the guest connects first. Match state remains reserved through a
+room state stays authoritative. A signed `host_id` fixes host/team ownership
+even when the guest connects first; verified legacy tokens use deterministic
+first-arrival compatibility without trusting client identity data. Match state remains reserved through a
 15-second simultaneous network drop, and bounded frames plus per-player rate
 limits protect the runtime. Result delivery retries with one stable idempotency
 key and a persistent Railway volume-backed outbox; a genuine draw closes the
@@ -97,5 +98,8 @@ room as a no-contest without recording two false losses.
 The four hero atlases, portraits, minion atlases, guardian atlases, and legacy
 ground texture are reused from the owner's Dawn Survivor repository. The
 diagonal battlefield, farm-site decal, tower/core structures, and projectile
-VFX were generated specifically for Dawn Duel. Gameplay code, layout, balance,
-network model, UI, structures, effects, and rules in this repository are new.
+VFX were generated specifically for Dawn Duel. The authoritative collision map
+follows the battlefield's lane, four natural farm clearings, and their visible
+entrances; both server movement and client prediction share that geometry.
+Gameplay code, layout, balance, network model, UI, structures, effects, and
+rules in this repository are new.

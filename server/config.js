@@ -19,8 +19,8 @@ export const MAP = Object.freeze({
   laneNormalY: 0.8841279645,
   laneLength: 1787.071627,
   laneWidth: 300,
-  campPocketRadius: 170,
-  campPathRadius: 82,
+  campPocketRadius: 118,
+  campPathRadius: 68,
   riverProgress: 893.5358135,
   fountainEdge: 230,
   campSites: [
@@ -90,7 +90,6 @@ export const MINIONS = Object.freeze({
 });
 
 export const CAMPS = Object.freeze({
-  leash: 260,
   resetAfterSeconds: 3,
   resetHealRatioPerSecond: 0.12,
   attackRange: 72,

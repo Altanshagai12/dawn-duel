@@ -2,7 +2,7 @@ import { MAP, PLAYER } from './config.js';
 import { applyDamage } from './combat.js';
 import { addEffect } from './effects.js';
 import { isPointVisible } from './fog.js';
-import { clampToOwnHalf, isBattlefieldWalkable, isOwnHalf, spawnPoint } from './geometry.js';
+import { clampToOwnHalf, isBattlefieldWalkable, isOwnHalf, resolveWalkableMove, spawnPoint, traceWalkableMove } from './geometry.js';
 import { HEROES } from './heroes.js';
 import { consumeSkillPress } from './inputs.js';
 import { clamp, distanceSquared, normalize, roundAround, stableSortByDistance } from './math.js';
@@ -13,6 +13,8 @@ function fire(world, player, angle, damage, options = {}) {
   spawnProjectile(world, {
     ownerId: player.id,
     team: player.team,
+    sourceX: player.x,
+    sourceY: player.y,
     x: player.x + Math.cos(angle) * 28,
     y: player.y + Math.sin(angle) * 28,
     dx: Math.cos(angle),
@@ -79,12 +81,14 @@ function targetsInRadius(world, player, radius) {
     ...world.clones.filter(target => target.team !== player.team),
     ...world.camps.filter(target => target.alive),
   ];
-  return targets.filter(target => distanceSquared(target, player) <= (radius + target.radius) ** 2);
+  return targets.filter(target => distanceSquared(target, player) <= (radius + target.radius) ** 2
+    && !traceWalkableMove(player, target, 0).blocked);
 }
 
-function blockedByStructure(world, x, y, radius) {
+function blockedByObstacle(world, x, y, radius) {
+  const point = { x, y };
   return Object.values(world.structures).some(structure => structure.hp > 0
-    && distanceSquared({ x, y }, structure) < (radius + structure.radius) ** 2);
+    && distanceSquared(point, structure) < (radius + structure.radius) ** 2);
 }
 
 function dash(world, player, skill) {
@@ -97,7 +101,7 @@ function dash(world, player, skill) {
     const x = clamp(origin.x + direction.x * distance, player.radius, MAP.width - player.radius);
     const y = clamp(origin.y + direction.y * distance, player.radius, MAP.height - player.radius);
     if (!isBattlefieldWalkable({ x, y }, player.radius)
-      || blockedByStructure(world, x, y, player.radius)) break;
+      || blockedByObstacle(world, x, y, player.radius)) break;
     player.x = x;
     player.y = y;
   }
@@ -182,11 +186,10 @@ function resolveInstantIntents(world, intents) {
     );
     const x = clamp(hit.targetPosition.x + direction.x * Math.min(100, hit.skill.knockback), target.radius, MAP.width - target.radius);
     const y = clamp(hit.targetPosition.y + direction.y * Math.min(100, hit.skill.knockback), target.radius, MAP.height - target.radius);
-    if (isBattlefieldWalkable({ x, y }, target.radius)
-      && !blockedByStructure(world, x, y, target.radius)) {
-      target.x = x;
-      target.y = y;
-    }
+    const resolved = traceWalkableMove(hit.targetPosition, { x, y }, target.radius,
+      point => blockedByObstacle(world, point.x, point.y, target.radius));
+    target.x = resolved.x;
+    target.y = resolved.y;
     target.displaceImmuneUntil = world.matchTime + 0.4;
   }
 }
@@ -204,6 +207,7 @@ function updateClone(world, clone, stats) {
   clone.shotsLeft -= 1;
   spawnProjectile(world, {
     ownerId: clone.ownerId, team: clone.team, x: clone.x, y: clone.y,
+    sourceX: clone.x, sourceY: clone.y,
     dx: direction.x, dy: direction.y, radius: 7, speed: 650, range: 340,
     damage: clone.damage * stats.skillDamage, damageClass: 'skill', projectileType: 'clone',
   });
@@ -244,11 +248,10 @@ export function updatePlayers(world, dt) {
       x = clamped.x;
       y = clamped.y;
     }
-    if (isBattlefieldWalkable({ x, y }, player.radius)
-      && !blockedByStructure(world, x, y, player.radius)) {
-      player.x = roundAround(x, MAP.width / 2);
-      player.y = roundAround(y, MAP.height / 2);
-    }
+    const resolved = resolveWalkableMove(player, { x, y }, player.radius,
+      point => blockedByObstacle(world, point.x, point.y, player.radius));
+    player.x = roundAround(resolved.x, MAP.width / 2);
+    player.y = roundAround(resolved.y, MAP.height / 2);
     const spawn = spawnPoint(player.team);
     const atFountain = distanceSquared(player, spawn) <= PLAYER.fountainHealRadius ** 2;
     if (atFountain && player.spiritUntil <= world.matchTime

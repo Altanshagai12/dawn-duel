@@ -97,7 +97,10 @@ export function updateMinions(world, dt) {
     const target = minionTarget(world, minion);
     if (!target || target.hp <= 0) continue;
     minion.targetId = target.id;
-    const range = config.range + minion.radius + (target.radius || 0);
+    const naturalRange = config.range + minion.radius + (target.radius || 0);
+    const range = target.kind === 'tower' || target.kind === 'core'
+      ? Math.min(naturalRange, STRUCTURES[target.kind].range)
+      : naturalRange;
     if (distanceSquared(minion, target) <= range * range) {
       if (world.matchTime < minion.attackReadyAt) continue;
       minion.attackReadyAt = world.matchTime + config.cooldown;

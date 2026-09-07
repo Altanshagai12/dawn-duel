@@ -22,18 +22,34 @@ function spawnCamp(world, camp) {
 }
 
 function targetFor(world, camp) {
-  const players = Object.values(world.players).filter(player => player.spiritUntil <= world.matchTime
-    && distanceSquared(player, { x: camp.homeX, y: camp.homeY }) <= CAMPS.leash ** 2);
+  const players = Object.values(world.players).filter(player => {
+    const engageRadius = Math.max(0, MAP.campPocketRadius - player.radius);
+    return player.spiritUntil <= world.matchTime
+      && distanceSquared(player, { x: camp.homeX, y: camp.homeY }) <= engageRadius ** 2;
+  });
   return players.length ? stableSortByDistance(players, camp)[0] : null;
+}
+
+function moveInsidePocket(camp, target, speed, dt) {
+  const direction = normalize(target.x - camp.x, target.y - camp.y);
+  let x = camp.x + direction.x * speed * dt;
+  let y = camp.y + direction.y * speed * dt;
+  const home = { x: camp.homeX, y: camp.homeY };
+  const maxDistance = Math.max(0, MAP.campPocketRadius - camp.radius);
+  const fromHome = normalize(x - home.x, y - home.y, 0, 0);
+  if (fromHome.length && distanceSquared({ x, y }, home) > maxDistance ** 2) {
+    x = home.x + fromHome.x * maxDistance;
+    y = home.y + fromHome.y * maxDistance;
+  }
+  camp.x = roundAround(x, MAP.width / 2);
+  camp.y = roundAround(y, MAP.height / 2);
 }
 
 function resetCamp(world, camp, dt) {
   const home = { x: camp.homeX, y: camp.homeY };
   const distance = Math.sqrt(distanceSquared(camp, home));
   if (distance > 3) {
-    const direction = normalize(home.x - camp.x, home.y - camp.y);
-    camp.x = roundAround(camp.x + direction.x * 90 * dt, MAP.width / 2);
-    camp.y = roundAround(camp.y + direction.y * 90 * dt, MAP.height / 2);
+    moveInsidePocket(camp, home, 90, dt);
   }
   if (world.matchTime - camp.idleSince >= CAMPS.resetAfterSeconds) {
     camp.hp = Math.min(camp.maxHp, camp.hp + camp.maxHp * CAMPS.resetHealRatioPerSecond * dt);
@@ -82,9 +98,7 @@ export function updateCamps(world, dt) {
         addEffect(world, 'campWarn', { x: target.x, y: target.y, radius: config.strikeRadius, campKind: camp.campType }, config.windup);
       }
     } else {
-      const direction = normalize(target.x - camp.x, target.y - camp.y);
-      camp.x = roundAround(camp.x + direction.x * 58 * dt, MAP.width / 2);
-      camp.y = roundAround(camp.y + direction.y * 58 * dt, MAP.height / 2);
+      moveInsidePocket(camp, target, 58, dt);
     }
   }
 }

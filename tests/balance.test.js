@@ -60,12 +60,18 @@ function simulateProgress(blueHero = 'shana', redHero = 'diamond') {
   world.phase = 'playing';
   const memory = { blue: {}, red: {} };
   let blueCrossed = false; let redCrossed = false; let objectiveDamaged = false;
+  const guardianEngaged = new Set();
+  const minCampDistance = { blue: Infinity, red: Infinity };
   for (let tick = 0; tick < 14400 && world.phase === 'playing'; tick += 1) {
     if (tick % 3 === 0) {
       memory.blue = updateBot(world, 'blue', memory.blue);
       memory.red = updateBot(world, 'red', memory.red);
     }
     stepWorld(world, 1 / 30);
+    for (const camp of world.camps) if (camp.targetId) guardianEngaged.add(camp.targetId);
+    for (const player of Object.values(world.players)) for (const camp of world.camps.filter(item => item.side === player.team)) {
+      minCampDistance[player.id] = Math.min(minCampDistance[player.id], Math.hypot(player.x - camp.homeX, player.y - camp.homeY));
+    }
     if (world.matchTime <= 120) {
       blueCrossed ||= laneProgress(world.players.blue) > laneProgress(world.structures.blueTower) + 80;
       redCrossed ||= laneProgress(world.players.red) < laneProgress(world.structures.redTower) - 80;
@@ -75,7 +81,7 @@ function simulateProgress(blueHero = 'shana', redHero = 'diamond') {
         || world.structures.redTower.hp < world.structures.redTower.maxHp;
     }
   }
-  return { world, blueCrossed, redCrossed, objectiveDamaged };
+  return { world, blueCrossed, redCrossed, objectiveDamaged, guardianEngaged, minCampDistance };
 }
 
 test('all hero matchups conclude by ten minutes without team-order bias', () => {
@@ -136,6 +142,7 @@ test('practice bots enter lane, farm, upgrade, and pressure objectives before Da
   for (const player of Object.values(result.world.players)) {
     assert.ok(player.xp > 0, `${player.id} earned no XP`);
     assert.ok(player.guardianKills > 0, `${player.id} ignored guardians`);
+    assert.ok(result.guardianEngaged.has(player.id), `${player.id} farmed guardians without entering their clearing; nearest=${result.minCampDistance[player.id]}`);
     assert.ok(Object.keys(player.ranks).length > 0, `${player.id} never upgraded`);
   }
   assert.equal(result.objectiveDamaged, true);
@@ -144,6 +151,7 @@ test('practice bots enter lane, farm, upgrade, and pressure objectives before Da
     for (const player of Object.values(mirror.world.players)) {
       assert.ok(player.xp > 0, `${hero} mirror ${player.id} earned no XP`);
       assert.ok(player.guardianKills > 0, `${hero} mirror ${player.id} ignored guardians`);
+      assert.ok(mirror.guardianEngaged.has(player.id), `${hero} mirror ${player.id} never drew guardian aggro`);
       assert.ok(Object.keys(player.ranks).length > 0, `${hero} mirror ${player.id} never upgraded`);
     }
   }

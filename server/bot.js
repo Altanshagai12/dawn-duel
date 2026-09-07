@@ -22,13 +22,16 @@ function chooseTarget(world, bot) {
 
 function navigationWaypoint(world, bot, target) {
   if (!target) return null;
+  if (target.kind === 'camp') {
+    const approach = lanePoint(laneProgress(target));
+    const entranceLength = Math.sqrt(distanceSquared(approach, target));
+    const committedToPocket = Math.sqrt(distanceSquared(bot, target)) < entranceLength - 40;
+    if (!committedToPocket && distanceSquared(bot, approach) > 60 ** 2) return approach;
+    return distanceSquared(bot, target) > 88 ** 2 ? target : null;
+  }
   const botOffset = laneOffset(bot);
   if (Math.abs(botOffset) > MAP.laneWidth / 2 - bot.radius - 8) {
     return lanePoint(laneProgress(bot));
-  }
-  if (target.kind === 'camp') {
-    const approach = lanePoint(laneProgress(target));
-    return distanceSquared(bot, approach) > 70 ** 2 ? approach : null;
   }
   const tower = bot.team === 0 ? world.structures.blueTower : world.structures.redTower;
   if (tower.hp <= 0) return null;
@@ -73,6 +76,7 @@ export function updateBot(world, botId, memory = {}) {
   const route = waypoint ? normalize(waypoint.x - bot.x, waypoint.y - bot.y) : aim;
   const routeRange = waypoint ? Math.sqrt(distanceSquared(bot, waypoint)) : range;
   let move = waypoint ? (routeRange > 24 ? route : { x: 0, y: 0 })
+    : target?.kind === 'camp' ? { x: 0, y: 0 }
     : target === home ? (range > PLAYER.fountainHealRadius * .65 ? aim : { x: 0, y: 0 })
     : range > 310 ? aim : range < 185 ? { x: -aim.x, y: -aim.y } : { x: 0, y: 0 };
   const dodge = dodgeGuardian(world, bot);

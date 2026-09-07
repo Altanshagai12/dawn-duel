@@ -1,6 +1,7 @@
 import { EntityViews } from './EntityViews.js';
 import { FogView } from './FogView.js';
 import { MAP } from '../../server/config.js';
+import { campApproach } from '../../server/geometry.js';
 
 const SHEETS = {
   shana: [181, 181, './assets/heroes/shana.webp'],
@@ -20,7 +21,6 @@ export class GameScene extends Phaser.Scene {
   preload() {
     this.load.on('loaderror', file => console.error('[dawn-duel]', { event: 'asset_load_failed', key: file?.key, url: file?.url }));
     this.load.image('battlefield', './assets/map/dawnfall-lane.webp');
-    this.load.image('farmSite', './assets/map/farm-site.webp');
     this.load.image('tower', './assets/structures/tower.webp');
     this.load.image('core', './assets/structures/core.webp');
     this.load.image('arcBolt', './assets/effects/arc-bolt.webp');
@@ -36,7 +36,7 @@ export class GameScene extends Phaser.Scene {
     this.add.image(MAP.width / 2, MAP.height / 2, 'battlefield')
       .setDisplaySize(MAP.width, MAP.height).setDepth(-20);
     this.drawMap();
-    this.views = new EntityViews(this, () => this.bridge.input?.());
+    this.views = new EntityViews(this, () => this.bridge.input?.(), () => this.bridge.language?.() || 'mn');
     this.fog = new FogView(this);
     this.scale.on('resize', size => this.resize(size.width, size.height));
     this.resize(this.scale.width, this.scale.height);
@@ -52,9 +52,11 @@ export class GameScene extends Phaser.Scene {
     g.lineStyle(4, 0xe8c879, .18)
       .lineBetween(MAP.blueCoreX, MAP.blueCoreY, MAP.redCoreX, MAP.redCoreY);
     for (const site of MAP.campSites) {
-      this.add.image(site.x, site.y, 'farmSite').setDisplaySize(180, 180).setAlpha(.78).setDepth(-8);
-      g.fillStyle(site.side ? 0xff747b : 0x5de6df, .07).fillCircle(site.x, site.y, 76);
-      g.lineStyle(2, site.side ? 0xff747b : 0x5de6df, .24).strokeCircle(site.x, site.y, 76);
+      const approach = campApproach(site);
+      const color = site.side ? 0xff747b : 0x5de6df;
+      g.lineStyle(MAP.campPathRadius * 2, color, .045)
+        .lineBetween(approach.x, approach.y, site.x, site.y);
+      g.fillStyle(color, .05).fillCircle(site.x, site.y, MAP.campPocketRadius);
     }
     g.fillStyle(0x5de6df, .08).fillCircle(MAP.blueCoreX, MAP.blueCoreY, 150);
     g.fillStyle(0xff747b, .08).fillCircle(MAP.redCoreX, MAP.redCoreY, 150);
@@ -100,7 +102,7 @@ export function createGameBridge() {
   const bridge = {
     ready(value) { scene = value; readyResolve(value); },
     apply(snapshot) { pending = snapshot; scene?.applySnapshot(snapshot); },
-    aim() {}, attack() {},
+    aim() {}, attack() {}, language: () => 'mn',
     getSnapshot: () => pending,
   };
   const game = new Phaser.Game({

@@ -6,6 +6,7 @@ import { laneProgress } from '../server/geometry.js';
 import { updateCamps } from '../server/camps.js';
 import { spawnWave, updateMinions } from '../server/lane.js';
 import { playingWorld } from './helpers.js';
+import { normalize } from '../server/math.js';
 
 test('each 24 second wave contains five symmetric units', () => {
   const { world } = playingWorld();
@@ -79,4 +80,28 @@ test('guardian strike is telegraphed and can be dodged', () => {
   world.matchTime = camp.pendingStrike.at;
   updateCamps(world, 0);
   assert.equal(blue.hp, hp);
+});
+
+test('guardians stay inside the farm clearing and do not aggro through its wall', () => {
+  const { world, blue } = playingWorld();
+  world.matchTime = MATCH.campFirstSpawnSeconds;
+  updateCamps(world, 0);
+  const camp = world.camps[0];
+  const wallDirection = normalize(
+    -(camp.homeY - MAP.blueCoreY),
+    camp.homeX - MAP.blueCoreX,
+  );
+  blue.x = camp.homeX + wallDirection.x * (MAP.campPocketRadius + 25);
+  blue.y = camp.homeY + wallDirection.y * (MAP.campPocketRadius + 25);
+  updateCamps(world, 0.5);
+  assert.equal(camp.targetId, null);
+  assert.equal(camp.x, camp.homeX);
+  assert.equal(camp.y, camp.homeY);
+
+  blue.x = camp.homeX + 80;
+  blue.y = camp.homeY;
+  updateCamps(world, 0.5);
+  assert.equal(camp.targetId, blue.id);
+  assert.ok(Math.hypot(camp.x - camp.homeX, camp.y - camp.homeY)
+    <= MAP.campPocketRadius - camp.radius + 0.001);
 });

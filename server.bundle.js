@@ -51,8 +51,8 @@ var MAP = Object.freeze({
   laneNormalY: 0.8841279645,
   laneLength: 1787.071627,
   laneWidth: 300,
-  campPocketRadius: 170,
-  campPathRadius: 82,
+  campPocketRadius: 118,
+  campPathRadius: 68,
   riverProgress: 893.5358135,
   fountainEdge: 230,
   campSites: [
@@ -117,7 +117,6 @@ var MINIONS = Object.freeze({
   maxDamageScale: 1.15
 });
 var CAMPS = Object.freeze({
-  leash: 260,
   resetAfterSeconds: 3,
   resetHealRatioPerSecond: 0.12,
   attackRange: 72,
@@ -215,6 +214,9 @@ function lanePoint(progress, offset = 0) {
     y: MAP.blueCoreY + MAP.laneUnitY * progress + MAP.laneNormalY * offset
   };
 }
+function campApproach(site) {
+  return lanePoint(Math.max(0, Math.min(MAP.laneLength, laneProgress(site))));
+}
 function segmentDistanceSquared(point, start, end) {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
@@ -233,11 +235,45 @@ function isBattlefieldWalkable(point, radius = 0) {
   const pocketRadius = Math.max(0, MAP.campPocketRadius - radius);
   const pathRadius = Math.max(0, MAP.campPathRadius - radius);
   return MAP.campSites.some((site) => {
-    const progress = Math.max(0, Math.min(MAP.laneLength, laneProgress(site)));
-    const approach = lanePoint(progress);
+    const approach = campApproach(site);
     const inPocket = (point.x - site.x) ** 2 + (point.y - site.y) ** 2 <= pocketRadius ** 2;
     return inPocket || segmentDistanceSquared(point, approach, site) <= pathRadius ** 2;
   });
+}
+function resolveWalkableMove(origin, desired, radius = 0, blocked = () => false) {
+  const canOccupy = (point) => isBattlefieldWalkable(point, radius) && !blocked(point);
+  if (canOccupy(desired)) return desired;
+  const dx = desired.x - origin.x;
+  const dy = desired.y - origin.y;
+  if (Math.hypot(dx, dy) < 1e-4) return { x: origin.x, y: origin.y };
+  for (const scale of [1, 0.66, 0.33]) {
+    for (const degrees of [15, -15, 30, -30, 45, -45, 60, -60, 75, -75, 90, -90]) {
+      const angle = degrees * Math.PI / 180;
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      const point = {
+        x: origin.x + (dx * cos - dy * sin) * scale,
+        y: origin.y + (dx * sin + dy * cos) * scale
+      };
+      if (canOccupy(point)) return point;
+    }
+  }
+  return { x: origin.x, y: origin.y };
+}
+function traceWalkableMove(origin, desired, radius = 0, blocked = () => false, stepSize = 8) {
+  const dx = desired.x - origin.x;
+  const dy = desired.y - origin.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance < 1e-4) return { x: origin.x, y: origin.y, fraction: 1, blocked: false };
+  const steps = Math.max(1, Math.ceil(distance / Math.max(1, stepSize)));
+  let last = { x: origin.x, y: origin.y, fraction: 0, blocked: false };
+  for (let step = 1; step <= steps; step += 1) {
+    const fraction = step / steps;
+    const point = { x: origin.x + dx * fraction, y: origin.y + dy * fraction };
+    if (!isBattlefieldWalkable(point, radius) || blocked(point)) return { ...last, blocked: true };
+    last = { ...point, fraction, blocked: false };
+  }
+  return last;
 }
 function formationPoint(team, advance, offset = 0) {
   const spawn = spawnPoint(team);
@@ -547,6 +583,19 @@ function playerSummary(world, player, visible, viewerId) {
 function visibleMobile(world, team, entity) {
   return entity.team === team || isPointVisible(world, team, entity);
 }
+function publicProjectile(projectile) {
+  return {
+    id: projectile.id,
+    kind: "projectile",
+    projectileType: projectile.projectileType,
+    team: projectile.team,
+    x: projectile.x,
+    y: projectile.y,
+    dx: projectile.dx,
+    dy: projectile.dy,
+    radius: projectile.radius
+  };
+}
 function filterSnapshot(world, viewerId) {
   const viewer = world.players[viewerId];
   if (!viewer) return null;
@@ -570,7 +619,7 @@ function filterSnapshot(world, viewerId) {
     clones: world.clones.filter(filter),
     camps: world.camps.filter((camp2) => camp2.alive && isPointVisible(world, team, camp2)),
     structures: world.structures,
-    projectiles: world.projectiles.filter((projectile) => isPointVisible(world, team, projectile)),
+    projectiles: world.projectiles.filter((projectile) => isPointVisible(world, team, projectile)).map(publicProjectile),
     effects: world.effects.filter((effect) => {
       if (!Number.isFinite(effect.x)) return true;
       if (!isPointVisible(world, team, effect)) return false;
@@ -1056,16 +1105,31 @@ function spawnCamp(world, camp2) {
   addEffect(world, "campSpawn", { x: camp2.x, y: camp2.y, team: null }, 0.8);
 }
 function targetFor(world, camp2) {
-  const players = Object.values(world.players).filter((player) => player.spiritUntil <= world.matchTime && distanceSquared(player, { x: camp2.homeX, y: camp2.homeY }) <= CAMPS.leash ** 2);
+  const players = Object.values(world.players).filter((player) => {
+    const engageRadius = Math.max(0, MAP.campPocketRadius - player.radius);
+    return player.spiritUntil <= world.matchTime && distanceSquared(player, { x: camp2.homeX, y: camp2.homeY }) <= engageRadius ** 2;
+  });
   return players.length ? stableSortByDistance(players, camp2)[0] : null;
+}
+function moveInsidePocket(camp2, target, speed, dt) {
+  const direction = normalize(target.x - camp2.x, target.y - camp2.y);
+  let x = camp2.x + direction.x * speed * dt;
+  let y = camp2.y + direction.y * speed * dt;
+  const home = { x: camp2.homeX, y: camp2.homeY };
+  const maxDistance = Math.max(0, MAP.campPocketRadius - camp2.radius);
+  const fromHome = normalize(x - home.x, y - home.y, 0, 0);
+  if (fromHome.length && distanceSquared({ x, y }, home) > maxDistance ** 2) {
+    x = home.x + fromHome.x * maxDistance;
+    y = home.y + fromHome.y * maxDistance;
+  }
+  camp2.x = roundAround(x, MAP.width / 2);
+  camp2.y = roundAround(y, MAP.height / 2);
 }
 function resetCamp(world, camp2, dt) {
   const home = { x: camp2.homeX, y: camp2.homeY };
   const distance = Math.sqrt(distanceSquared(camp2, home));
   if (distance > 3) {
-    const direction = normalize(home.x - camp2.x, home.y - camp2.y);
-    camp2.x = roundAround(camp2.x + direction.x * 90 * dt, MAP.width / 2);
-    camp2.y = roundAround(camp2.y + direction.y * 90 * dt, MAP.height / 2);
+    moveInsidePocket(camp2, home, 90, dt);
   }
   if (world.matchTime - camp2.idleSince >= CAMPS.resetAfterSeconds) {
     camp2.hp = Math.min(camp2.maxHp, camp2.hp + camp2.maxHp * CAMPS.resetHealRatioPerSecond * dt);
@@ -1112,9 +1176,7 @@ function updateCamps(world, dt) {
         addEffect(world, "campWarn", { x: target.x, y: target.y, radius: config2.strikeRadius, campKind: camp2.campType }, config2.windup);
       }
     } else {
-      const direction = normalize(target.x - camp2.x, target.y - camp2.y);
-      camp2.x = roundAround(camp2.x + direction.x * 58 * dt, MAP.width / 2);
-      camp2.y = roundAround(camp2.y + direction.y * 58 * dt, MAP.height / 2);
+      moveInsidePocket(camp2, target, 58, dt);
     }
   }
 }
@@ -1201,7 +1263,8 @@ function updateMinions(world, dt) {
     const target = minionTarget(world, minion);
     if (!target || target.hp <= 0) continue;
     minion.targetId = target.id;
-    const range = config2.range + minion.radius + (target.radius || 0);
+    const naturalRange = config2.range + minion.radius + (target.radius || 0);
+    const range = target.kind === "tower" || target.kind === "core" ? Math.min(naturalRange, STRUCTURES[target.kind].range) : naturalRange;
     if (distanceSquared(minion, target) <= range * range) {
       if (world.matchTime < minion.attackReadyAt) continue;
       minion.attackReadyAt = world.matchTime + config2.cooldown;
@@ -1269,17 +1332,25 @@ function removeInvalidTargets(world) {
 // server/projectiles.js
 function spawnProjectile(world, options) {
   const length = Math.hypot(options.dx, options.dy) || 1;
+  const radius = options.radius || 8;
+  const source = {
+    x: Number.isFinite(options.sourceX) ? options.sourceX : options.x,
+    y: Number.isFinite(options.sourceY) ? options.sourceY : options.y
+  };
+  const muzzle = traceWalkableMove(source, { x: options.x, y: options.y }, radius);
   const projectile = {
     id: `p${world.nextEntityId++}`,
     kind: "projectile",
     projectileType: options.projectileType || "basic",
     ownerId: options.ownerId,
     team: options.team,
-    x: options.x,
-    y: options.y,
+    sourceX: source.x,
+    sourceY: source.y,
+    x: muzzle.x,
+    y: muzzle.y,
     dx: options.dx / length,
     dy: options.dy / length,
-    radius: options.radius || 8,
+    radius,
     speed: options.speed,
     remaining: options.range,
     damage: options.damage,
@@ -1287,10 +1358,15 @@ function spawnProjectile(world, options) {
     status: options.status || {},
     pierces: Math.max(0, Math.min(6, Number(options.pierces) || 0)),
     hitIds: [],
-    alive: true
+    alive: !muzzle.blocked
   };
   world.projectiles.push(projectile);
-  addEffect(world, "muzzle", { x: projectile.x, y: projectile.y, team: projectile.team }, 0.12);
+  addEffect(world, muzzle.blocked ? "impact" : "muzzle", {
+    x: projectile.x,
+    y: projectile.y,
+    team: projectile.team,
+    projectileType: projectile.projectileType
+  }, muzzle.blocked ? 0.3 : 0.12);
   return projectile;
 }
 function targetsFor(world, projectile) {
@@ -1301,8 +1377,10 @@ function targetsFor(world, projectile) {
   for (const minion of world.minions) if (minion.team !== projectile.team && minion.hp > 0) targets.push(minion);
   for (const clone of world.clones) if (clone.team !== projectile.team && clone.hp > 0) targets.push(clone);
   for (const camp2 of world.camps) if (camp2.alive && camp2.hp > 0) targets.push(camp2);
+  const source = { x: projectile.sourceX, y: projectile.sourceY };
   for (const structure2 of Object.values(world.structures)) {
-    if (structure2.team !== projectile.team && structure2.hp > 0) targets.push(structure2);
+    const range = STRUCTURES[structure2.kind].range;
+    if (structure2.team !== projectile.team && structure2.hp > 0 && distanceSquared(source, structure2) <= range * range) targets.push(structure2);
   }
   return targets.filter((target) => !projectile.hitIds.includes(target.id));
 }
@@ -1315,11 +1393,12 @@ function updateProjectiles(world, dt) {
     const travel = Math.min(projectile.remaining, projectile.speed * dt);
     const nextX = projectile.x + projectile.dx * travel;
     const nextY = projectile.y + projectile.dy * travel;
+    const terrain = traceWalkableMove(projectile, { x: nextX, y: nextY }, projectile.radius);
     let hit = null;
     let hitT = Infinity;
     for (const target of targetsFor(world, projectile)) {
       const t = segmentCircleHit(projectile.x, projectile.y, nextX, nextY, target, projectile.radius);
-      if (t === null || t > hitT + 1e-6) continue;
+      if (t === null || t > terrain.fraction + 1e-6 || t > hitT + 1e-6) continue;
       if (Math.abs(t - hitT) <= 1e-6 && (COLLISION_PRIORITY[target.kind] ?? 9) >= (COLLISION_PRIORITY[hit?.kind] ?? 9)) continue;
       hit = target;
       hitT = t;
@@ -1340,6 +1419,19 @@ function updateProjectiles(world, dt) {
       }
       continue;
     }
+    if (terrain.blocked) {
+      projectile.x = terrain.x;
+      projectile.y = terrain.y;
+      projectile.remaining -= travel * terrain.fraction;
+      projectile.alive = false;
+      addEffect(world, "impact", {
+        x: projectile.x,
+        y: projectile.y,
+        team: projectile.team,
+        projectileType: projectile.projectileType
+      }, 0.3);
+      continue;
+    }
     projectile.x = nextX;
     projectile.y = nextY;
     projectile.remaining -= travel;
@@ -1352,6 +1444,8 @@ function fire(world, player, angle, damage, options = {}) {
   spawnProjectile(world, {
     ownerId: player.id,
     team: player.team,
+    sourceX: player.x,
+    sourceY: player.y,
     x: player.x + Math.cos(angle) * 28,
     y: player.y + Math.sin(angle) * 28,
     dx: Math.cos(angle),
@@ -1414,10 +1508,11 @@ function targetsInRadius(world, player, radius) {
     ...world.clones.filter((target) => target.team !== player.team),
     ...world.camps.filter((target) => target.alive)
   ];
-  return targets.filter((target) => distanceSquared(target, player) <= (radius + target.radius) ** 2);
+  return targets.filter((target) => distanceSquared(target, player) <= (radius + target.radius) ** 2 && !traceWalkableMove(player, target, 0).blocked);
 }
-function blockedByStructure(world, x, y, radius) {
-  return Object.values(world.structures).some((structure2) => structure2.hp > 0 && distanceSquared({ x, y }, structure2) < (radius + structure2.radius) ** 2);
+function blockedByObstacle(world, x, y, radius) {
+  const point = { x, y };
+  return Object.values(world.structures).some((structure2) => structure2.hp > 0 && distanceSquared(point, structure2) < (radius + structure2.radius) ** 2);
 }
 function dash(world, player, skill) {
   const origin = { x: player.x, y: player.y };
@@ -1428,7 +1523,7 @@ function dash(world, player, skill) {
     const distance = skill.distance * step / steps;
     const x = clamp(origin.x + direction.x * distance, player.radius, MAP.width - player.radius);
     const y = clamp(origin.y + direction.y * distance, player.radius, MAP.height - player.radius);
-    if (!isBattlefieldWalkable({ x, y }, player.radius) || blockedByStructure(world, x, y, player.radius)) break;
+    if (!isBattlefieldWalkable({ x, y }, player.radius) || blockedByObstacle(world, x, y, player.radius)) break;
     player.x = x;
     player.y = y;
   }
@@ -1524,10 +1619,14 @@ function resolveInstantIntents(world, intents) {
     );
     const x = clamp(hit.targetPosition.x + direction.x * Math.min(100, hit.skill.knockback), target.radius, MAP.width - target.radius);
     const y = clamp(hit.targetPosition.y + direction.y * Math.min(100, hit.skill.knockback), target.radius, MAP.height - target.radius);
-    if (isBattlefieldWalkable({ x, y }, target.radius) && !blockedByStructure(world, x, y, target.radius)) {
-      target.x = x;
-      target.y = y;
-    }
+    const resolved = traceWalkableMove(
+      hit.targetPosition,
+      { x, y },
+      target.radius,
+      (point) => blockedByObstacle(world, point.x, point.y, target.radius)
+    );
+    target.x = resolved.x;
+    target.y = resolved.y;
     target.displaceImmuneUntil = world.matchTime + 0.4;
   }
 }
@@ -1547,6 +1646,8 @@ function updateClone(world, clone, stats) {
     team: clone.team,
     x: clone.x,
     y: clone.y,
+    sourceX: clone.x,
+    sourceY: clone.y,
     dx: direction.x,
     dy: direction.y,
     radius: 7,
@@ -1592,10 +1693,14 @@ function updatePlayers(world, dt) {
       x = clamped.x;
       y = clamped.y;
     }
-    if (isBattlefieldWalkable({ x, y }, player.radius) && !blockedByStructure(world, x, y, player.radius)) {
-      player.x = roundAround(x, MAP.width / 2);
-      player.y = roundAround(y, MAP.height / 2);
-    }
+    const resolved = resolveWalkableMove(
+      player,
+      { x, y },
+      player.radius,
+      (point) => blockedByObstacle(world, point.x, point.y, player.radius)
+    );
+    player.x = roundAround(resolved.x, MAP.width / 2);
+    player.y = roundAround(resolved.y, MAP.height / 2);
     const spawn = spawnPoint(player.team);
     const atFountain = distanceSquared(player, spawn) <= PLAYER.fountainHealRadius ** 2;
     if (atFountain && player.spiritUntil <= world.matchTime && world.matchTime - player.lastHeroDamageAt >= PLAYER.fountainHealCombatDelay) {

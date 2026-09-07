@@ -1,21 +1,30 @@
-import { MAP } from './config.js';
+import { MAP, STRUCTURES } from './config.js';
 import { applyDamage } from './combat.js';
 import { addEffect } from './effects.js';
-import { segmentCircleHit } from './math.js';
+import { traceWalkableMove } from './geometry.js';
+import { distanceSquared, segmentCircleHit } from './math.js';
 
 export function spawnProjectile(world, options) {
   const length = Math.hypot(options.dx, options.dy) || 1;
+  const radius = options.radius || 8;
+  const source = {
+    x: Number.isFinite(options.sourceX) ? options.sourceX : options.x,
+    y: Number.isFinite(options.sourceY) ? options.sourceY : options.y,
+  };
+  const muzzle = traceWalkableMove(source, { x: options.x, y: options.y }, radius);
   const projectile = {
     id: `p${world.nextEntityId++}`,
     kind: 'projectile',
     projectileType: options.projectileType || 'basic',
     ownerId: options.ownerId,
     team: options.team,
-    x: options.x,
-    y: options.y,
+    sourceX: source.x,
+    sourceY: source.y,
+    x: muzzle.x,
+    y: muzzle.y,
     dx: options.dx / length,
     dy: options.dy / length,
-    radius: options.radius || 8,
+    radius,
     speed: options.speed,
     remaining: options.range,
     damage: options.damage,
@@ -23,10 +32,13 @@ export function spawnProjectile(world, options) {
     status: options.status || {},
     pierces: Math.max(0, Math.min(6, Number(options.pierces) || 0)),
     hitIds: [],
-    alive: true,
+    alive: !muzzle.blocked,
   };
   world.projectiles.push(projectile);
-  addEffect(world, 'muzzle', { x: projectile.x, y: projectile.y, team: projectile.team }, 0.12);
+  addEffect(world, muzzle.blocked ? 'impact' : 'muzzle', {
+    x: projectile.x, y: projectile.y, team: projectile.team,
+    projectileType: projectile.projectileType,
+  }, muzzle.blocked ? 0.3 : 0.12);
   return projectile;
 }
 
@@ -38,8 +50,11 @@ function targetsFor(world, projectile) {
   for (const minion of world.minions) if (minion.team !== projectile.team && minion.hp > 0) targets.push(minion);
   for (const clone of world.clones) if (clone.team !== projectile.team && clone.hp > 0) targets.push(clone);
   for (const camp of world.camps) if (camp.alive && camp.hp > 0) targets.push(camp);
+  const source = { x: projectile.sourceX, y: projectile.sourceY };
   for (const structure of Object.values(world.structures)) {
-    if (structure.team !== projectile.team && structure.hp > 0) targets.push(structure);
+    const range = STRUCTURES[structure.kind].range;
+    if (structure.team !== projectile.team && structure.hp > 0
+      && distanceSquared(source, structure) <= range * range) targets.push(structure);
   }
   return targets.filter(target => !projectile.hitIds.includes(target.id));
 }
@@ -54,11 +69,12 @@ export function updateProjectiles(world, dt) {
     const travel = Math.min(projectile.remaining, projectile.speed * dt);
     const nextX = projectile.x + projectile.dx * travel;
     const nextY = projectile.y + projectile.dy * travel;
+    const terrain = traceWalkableMove(projectile, { x: nextX, y: nextY }, projectile.radius);
     let hit = null;
     let hitT = Infinity;
     for (const target of targetsFor(world, projectile)) {
       const t = segmentCircleHit(projectile.x, projectile.y, nextX, nextY, target, projectile.radius);
-      if (t === null || t > hitT + 0.000001) continue;
+      if (t === null || t > terrain.fraction + 0.000001 || t > hitT + 0.000001) continue;
       if (Math.abs(t - hitT) <= 0.000001
         && (COLLISION_PRIORITY[target.kind] ?? 9) >= (COLLISION_PRIORITY[hit?.kind] ?? 9)) continue;
       hit = target;
@@ -78,6 +94,17 @@ export function updateProjectiles(world, dt) {
       } else {
         projectile.alive = false;
       }
+      continue;
+    }
+    if (terrain.blocked) {
+      projectile.x = terrain.x;
+      projectile.y = terrain.y;
+      projectile.remaining -= travel * terrain.fraction;
+      projectile.alive = false;
+      addEffect(world, 'impact', {
+        x: projectile.x, y: projectile.y, team: projectile.team,
+        projectileType: projectile.projectileType,
+      }, 0.3);
       continue;
     }
     projectile.x = nextX;

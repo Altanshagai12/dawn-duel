@@ -97,6 +97,7 @@ async function boot() {
   bridge.aim = (x, y) => input.pointAim(x, y, latestSnapshot?.players?.[latestSnapshot.you]);
   bridge.attack = active => { input.state.attack = active; };
   bridge.input = () => input.state;
+  bridge.language = () => ui.language;
   await Promise.all([gameBridge.ready, launch.connection.catch(error => {
     ui.setNetwork('network', 'poor');
     ui.toast(error?.message || 'Connection failed');

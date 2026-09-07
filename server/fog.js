@@ -81,6 +81,20 @@ function visibleMobile(world, team, entity) {
   return entity.team === team || isPointVisible(world, team, entity);
 }
 
+function publicProjectile(projectile) {
+  return {
+    id: projectile.id,
+    kind: 'projectile',
+    projectileType: projectile.projectileType,
+    team: projectile.team,
+    x: projectile.x,
+    y: projectile.y,
+    dx: projectile.dx,
+    dy: projectile.dy,
+    radius: projectile.radius,
+  };
+}
+
 export function filterSnapshot(world, viewerId) {
   const viewer = world.players[viewerId];
   if (!viewer) return null;
@@ -104,7 +118,9 @@ export function filterSnapshot(world, viewerId) {
     clones: world.clones.filter(filter),
     camps: world.camps.filter(camp => camp.alive && isPointVisible(world, team, camp)),
     structures: world.structures,
-    projectiles: world.projectiles.filter(projectile => isPointVisible(world, team, projectile)),
+    projectiles: world.projectiles
+      .filter(projectile => isPointVisible(world, team, projectile))
+      .map(publicProjectile),
     effects: world.effects.filter(effect => {
       if (!Number.isFinite(effect.x)) return true;
       if (!isPointVisible(world, team, effect)) return false;

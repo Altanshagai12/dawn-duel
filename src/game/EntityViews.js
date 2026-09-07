@@ -1,10 +1,26 @@
-import { MAP } from '../../server/config.js';
+import { MAP, STRUCTURES } from '../../server/config.js';
+import { resolveWalkableMove } from '../../server/geometry.js';
+import { HEROES } from '../../server/heroes.js';
 
 const HERO_SCALE = { shana: .43, diamond: .42, scarlett: .43, hina: .43 };
 const MINION_TEXTURE = { melee: 'wingling', ranged: 'spitter', siege: 'brute' };
 const CAMP_TEXTURE = { aegis: 'aegis', tempo: 'tempo' };
 const COLORS = [0x6cebe5, 0xff7a80];
-const STRUCTURE_RANGE = { tower: 280, core: 310 };
+
+export function heroDisplayName(heroId, language = 'mn') {
+  const hero = HEROES[heroId];
+  return (language === 'mn' ? hero?.nameMn : hero?.name) || hero?.name || 'Hero';
+}
+
+export function structureBlocks(structures, point, radius) {
+  return structures.some(structure => structure.hp > 0
+    && (point.x - structure.x) ** 2 + (point.y - structure.y) ** 2
+      < (radius + structure.radius) ** 2);
+}
+
+export function shouldRecreateEntityView(previous, next) {
+  return (next.kind === 'player' || next.kind === 'clone') && previous.hero !== next.hero;
+}
 
 function directionRow(dx, dy) {
   if (Math.hypot(dx, dy) < .6) return 4;
@@ -13,11 +29,13 @@ function directionRow(dx, dy) {
 }
 
 export class EntityViews {
-  constructor(scene, inputState) {
+  constructor(scene, inputState, language = () => 'mn') {
     this.scene = scene;
     this.inputState = inputState;
+    this.language = language;
     this.items = new Map();
     this.seenEffects = new Set();
+    this.structures = [];
   }
 
   create(entity) {
@@ -36,11 +54,11 @@ export class EntityViews {
     const barBg = this.scene.add.rectangle(0, -42, 58, 5, 0x041010, .9).setOrigin(.5);
     const bar = this.scene.add.rectangle(-29, -42, 58, 4, COLORS[entity.team] || 0xc4a4ff).setOrigin(0, .5);
     const label = entity.kind === 'player'
-      ? this.scene.add.text(0, -55, entity.name || '', { fontFamily: 'system-ui', fontSize: '10px', color: '#effff8', stroke: '#061010', strokeThickness: 3 }).setOrigin(.5)
+      ? this.scene.add.text(0, -55, heroDisplayName(entity.hero, this.language()), { fontFamily: 'system-ui', fontSize: '10px', color: '#effff8', stroke: '#061010', strokeThickness: 3 }).setOrigin(.5)
       : null;
     const children = label ? [sprite, barBg, bar, label] : [sprite, barBg, bar];
     const root = this.scene.add.container(entity.x, entity.y, children).setDepth(entity.y + 30);
-    return { root, sprite, bar, entity, targetX: entity.x, targetY: entity.y, lastX: entity.x, lastY: entity.y };
+    return { root, sprite, bar, label, entity, targetX: entity.x, targetY: entity.y, lastX: entity.x, lastY: entity.y };
   }
 
   createProjectile(entity) {
@@ -55,7 +73,7 @@ export class EntityViews {
   createStructure(entity) {
     const size = entity.kind === 'core' ? 118 : 88;
     const root = this.scene.add.container(entity.x, entity.y).setDepth(entity.y + 10);
-    const range = this.scene.add.circle(0, 0, STRUCTURE_RANGE[entity.kind], COLORS[entity.team], .025)
+    const range = this.scene.add.circle(0, 0, STRUCTURES[entity.kind].range, COLORS[entity.team], .025)
       .setStrokeStyle(2, COLORS[entity.team], .11);
     const aura = this.scene.add.circle(0, -8, size * .66, COLORS[entity.team], .09)
       .setStrokeStyle(3, COLORS[entity.team], .42);
@@ -72,6 +90,7 @@ export class EntityViews {
 
   apply(snapshot) {
     this.localId = snapshot.you;
+    this.structures = Object.values(snapshot.structures);
     const entities = [
       ...Object.values(snapshot.players).filter(entity => Number.isFinite(entity.x) && entity.hero),
       ...snapshot.minions, ...snapshot.clones, ...snapshot.camps,
@@ -81,11 +100,19 @@ export class EntityViews {
     for (const entity of entities) {
       alive.add(entity.id);
       let view = this.items.get(entity.id);
+      if (view && shouldRecreateEntityView(view.entity, entity)) {
+        view.root.destroy(true);
+        this.items.delete(entity.id);
+        view = null;
+      }
       if (!view) { view = this.create(entity); this.items.set(entity.id, view); }
       view.entity = entity;
       view.targetX = entity.x; view.targetY = entity.y;
       if (view.bar && entity.maxHp) view.bar.scaleX = Math.max(0, entity.hp / entity.maxHp);
-      if (entity.kind === 'player') view.root.setAlpha(entity.spiritUntil > snapshot.now ? .38 : 1);
+      if (entity.kind === 'player') {
+        view.label?.setText(heroDisplayName(entity.hero, this.language()));
+        view.root.setAlpha(entity.spiritUntil > snapshot.now ? .38 : 1);
+      }
     }
     for (const [id, view] of this.items) {
       if (alive.has(id)) continue;
@@ -103,16 +130,31 @@ export class EntityViews {
       let facingX = dx;
       let facingY = dy;
       const correction = local ? (Math.hypot(dx, dy) > 65 ? .42 : .08) : .28;
-      view.root.x += dx * correction;
-      view.root.y += dy * correction;
+      const teleported = view.entity.kind === 'player' && Math.hypot(dx, dy) > 220;
+      const radius = view.entity.radius || 21;
+      const blocked = point => structureBlocks(this.structures, point, radius);
+      const corrected = teleported
+        ? { x: view.targetX, y: view.targetY }
+        : view.entity.kind === 'player'
+        ? resolveWalkableMove(view.root, {
+          x: view.root.x + dx * correction,
+          y: view.root.y + dy * correction,
+        }, radius, blocked)
+        : { x: view.root.x + dx * correction, y: view.root.y + dy * correction };
+      view.root.x = corrected.x;
+      view.root.y = corrected.y;
       if (local) {
         const input = this.inputState?.();
         const magnitude = Math.min(1, Math.hypot(input?.moveX || 0, input?.moveY || 0));
         const scale = magnitude > 0 ? magnitude / Math.hypot(input.moveX, input.moveY) : 0;
         const moveX = (input?.moveX || 0) * scale;
         const moveY = (input?.moveY || 0) * scale;
-        view.root.x = Phaser.Math.Clamp(view.root.x + moveX * 180 * delta / 1000, 21, MAP.width - 21);
-        view.root.y = Phaser.Math.Clamp(view.root.y + moveY * 180 * delta / 1000, 21, MAP.height - 21);
+        const predicted = resolveWalkableMove(view.root, {
+          x: Phaser.Math.Clamp(view.root.x + moveX * 180 * delta / 1000, 21, MAP.width - 21),
+          y: Phaser.Math.Clamp(view.root.y + moveY * 180 * delta / 1000, 21, MAP.height - 21),
+        }, radius, blocked);
+        view.root.x = predicted.x;
+        view.root.y = predicted.y;
         if (magnitude > .05) {
           facingX = moveX;
           facingY = moveY;
