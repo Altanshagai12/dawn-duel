@@ -117,7 +117,7 @@ async function boot() {
   const gameBridge = createGameBridge();
   bridge = gameBridge.bridge;
   bridge.aim = (x, y) => input.pointAim(x, y, latestSnapshot?.players?.[latestSnapshot.you]);
-  bridge.attack = active => { input.state.attack = input.enabled && active; };
+  bridge.attack = active => input.setAttack(active);
   bridge.input = () => input.enabled ? input.state : {};
   bridge.preview = () => input.preview;
   await Promise.all([gameBridge.ready, launch.connection.catch(error => {

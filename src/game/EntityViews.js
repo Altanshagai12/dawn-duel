@@ -1,6 +1,6 @@
-import { MAP, PLAYER, STRUCTURES } from '../../server/config.js';
-import { resolveWalkableMove } from '../../server/geometry.js';
-import { derivedStats } from '../../server/progression.js';
+import { STRUCTURES } from '../../server/config.js';
+import { EntityMotion, MotionClock, facingRow, moveView } from './motion.js';
+export { predictionSpeed, structureBlocks } from './motion.js';
 
 const HERO_SCALE = { shana: .43, diamond: .42, scarlett: .43, hina: .43 };
 const MINION_TEXTURE = { melee: 'wingling', ranged: 'spitter', siege: 'brute' };
@@ -11,27 +11,8 @@ export function playerDisplayName(player) {
   return String(player?.name || 'Player').slice(0, 24);
 }
 
-export function structureBlocks(structures, point, radius) {
-  return structures.some(structure => structure.hp > 0
-    && (point.x - structure.x) ** 2 + (point.y - structure.y) ** 2
-      < (radius + structure.radius) ** 2);
-}
-
 export function shouldRecreateEntityView(previous, next) {
   return previous.team !== next.team || ((next.kind === 'player' || next.kind === 'clone') && previous.hero !== next.hero);
-}
-
-export function predictionSpeed(player, now) {
-  let speed = derivedStats(player, now).speed;
-  if ((player.slowUntil || 0) > now) speed *= 1 - Math.max(0, Math.min(.3, player.slowRatio || 0));
-  if ((player.spiritUntil || 0) > now) speed *= PLAYER.woundedSpeedRatio;
-  return speed;
-}
-
-function directionRow(dx, dy) {
-  if (Math.hypot(dx, dy) < .6) return 4;
-  const angle = (Math.atan2(dy, dx) + Math.PI * 2) % (Math.PI * 2);
-  return Math.round(angle / (Math.PI / 4) + 2) % 8;
 }
 
 export class EntityViews {
@@ -41,11 +22,13 @@ export class EntityViews {
     this.items = new Map();
     this.seenEffects = new Set();
     this.structures = [];
+    this.motionClock = new MotionClock();
   }
 
   reset() {
     for (const view of this.items.values()) view.root.destroy(true);
-    this.items.clear(); this.seenEffects.clear(); this.structures = [];
+    this.items.clear(); this.seenEffects.clear(); this.structures = []; this.motionClock.reset();
+    this.playing = false; this.snapshotNow = undefined; this.localId = null;
   }
 
   color(team) { return team === 0 || team === 1 ? COLORS[team === this.team ? 0 : 1] : 0xc4a4ff; }
@@ -100,11 +83,19 @@ export class EntityViews {
   }
 
   apply(snapshot) {
+    if (this.playing && snapshot.match.phase === 'playing' && snapshot.now < this.snapshotNow) {
+      return this.items.get(this.localId)?.root || null;
+    }
     if (this.team !== undefined && this.team !== snapshot.team) this.reset();
     this.team = snapshot.team;
     this.localId = snapshot.you;
+    const playing = snapshot.match.phase === 'playing' && !snapshot.match.paused;
+    const resetMotion = playing !== this.playing || snapshot.now < (this.snapshotNow || 0);
+    if (resetMotion) this.motionClock.reset();
     this.snapshotNow = snapshot.now;
-    this.playing = snapshot.match.phase === 'playing' && !snapshot.match.paused;
+    this.playing = playing;
+    const receivedMs = performance.now();
+    this.motionClock.push(snapshot.now * 1000, receivedMs);
     this.structures = Object.values(snapshot.structures);
     const entities = [
       ...Object.values(snapshot.players).filter(entity => Number.isFinite(entity.x) && entity.hero),
@@ -121,11 +112,14 @@ export class EntityViews {
         view = null;
       }
       if (!view) { view = this.create(entity); this.items.set(entity.id, view); }
+      if (!view.motion) view.motion = new EntityMotion(entity, snapshot.now * 1000, receivedMs);
+      else view.motion.accept(entity, snapshot.now * 1000, receivedMs, resetMotion);
       view.entity = entity;
       view.targetX = entity.x; view.targetY = entity.y;
       if (view.bar && entity.maxHp) view.bar.scaleX = Math.max(0, entity.hp / entity.maxHp);
       if (entity.kind === 'player') {
-        view.label?.setText(playerDisplayName(entity));
+        const name = playerDisplayName(entity);
+        if (view.label?.text !== name) view.label?.setText(name);
         view.root.setAlpha(entity.spiritUntil > snapshot.now ? .38 : 1);
       }
       if (view.range) {
@@ -146,54 +140,27 @@ export class EntityViews {
   }
 
   update(time, delta = 16) {
+    const input = this.inputState?.() || {};
+    const clientMs = performance.now();
+    const renderMs = this.motionClock.sample(clientMs);
     for (const [id, view] of this.items) {
-      const dx = view.targetX - view.root.x;
-      const dy = view.targetY - view.root.y;
       const local = id === this.localId && view.entity.kind === 'player';
-      let facingX = dx;
-      let facingY = dy;
-      const factor = local ? (Math.hypot(dx, dy) > 65 ? .42 : .08) : .28;
-      const correction = 1 - (1 - factor) ** (delta / (1000 / 60));
-      const teleported = view.entity.kind === 'player' && Math.hypot(dx, dy) > 220;
-      const radius = view.entity.radius || 21;
-      const blocked = point => structureBlocks(this.structures, point, radius);
-      const corrected = teleported
-        ? { x: view.targetX, y: view.targetY }
-        : view.entity.kind === 'player'
-        ? resolveWalkableMove(view.root, {
-          x: view.root.x + dx * correction,
-          y: view.root.y + dy * correction,
-        }, radius, blocked)
-        : { x: view.root.x + dx * correction, y: view.root.y + dy * correction };
-      view.root.x = corrected.x;
-      view.root.y = corrected.y;
-      if (local && this.playing) {
-        const input = this.inputState?.();
-        const magnitude = Math.min(1, Math.hypot(input?.moveX || 0, input?.moveY || 0));
-        const scale = magnitude > 0 ? magnitude / Math.hypot(input.moveX, input.moveY) : 0;
-        const moveX = (input?.moveX || 0) * scale;
-        const moveY = (input?.moveY || 0) * scale;
-        const speed = predictionSpeed(view.entity, this.snapshotNow || 0);
-        const predicted = resolveWalkableMove(view.root, {
-          x: Phaser.Math.Clamp(view.root.x + moveX * speed * delta / 1000, 21, MAP.width - 21),
-          y: Phaser.Math.Clamp(view.root.y + moveY * speed * delta / 1000, 21, MAP.height - 21),
-        }, radius, blocked);
-        view.root.x = predicted.x;
-        view.root.y = predicted.y;
-        if (magnitude > .05) {
-          facingX = moveX;
-          facingY = moveY;
-          view.lastFacing = { x: moveX, y: moveY };
-        } else if (view.lastFacing) {
-          facingX = view.lastFacing.x;
-          facingY = view.lastFacing.y;
-        }
-      }
-      if (view.entity.kind !== 'projectile' && view.entity.kind !== 'tower' && view.entity.kind !== 'core') {
-        const row = directionRow(facingX, facingY);
-        view.sprite.setFrame(row * 6 + Math.floor(time / 110) % 6);
-        view.root.setDepth(view.root.y + 30);
-      }
+      const beforeX = view.root.x, beforeY = view.root.y;
+      view.justSnapped = view.motion.snap;
+      moveView(view, { local, input, playing: this.playing, now: this.snapshotNow || 0,
+        clientMs, renderMs, delta, structures: this.structures });
+      if (['projectile', 'tower', 'core'].includes(view.entity.kind)) continue;
+      const dx = view.root.x - beforeX, dy = view.root.y - beforeY;
+      const moving = !view.justSnapped && Math.hypot(dx, dy) > delta / 1000;
+      const firing = local && this.playing && input.attack && !(view.entity.spiritUntil > this.snapshotNow);
+      if (firing) view.row = facingRow(input.aimX, input.aimY, view.row);
+      else if (local && Math.hypot(input.moveX || 0, input.moveY || 0) > .02) {
+        view.row = facingRow(input.moveX, input.moveY, view.row);
+      } else if (moving) view.row = facingRow(dx, dy, view.row);
+      view.animationMs = moving || firing ? (view.animationMs || 0) + delta : 0;
+      const frame = (view.row ?? 4) * 6 + Math.floor(view.animationMs / 110) % 6;
+      if (view.frame !== frame) { view.sprite.setFrame(frame); view.frame = frame; }
+      view.root.setDepth(view.root.y + 30);
     }
   }
 

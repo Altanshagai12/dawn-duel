@@ -1,0 +1,22 @@
+/* Local input feedback only: real projectiles and impacts stay in the world. */
+.stick--aim { transition: border-color .1s, background-color .1s; }
+.stick--aim::after {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border: 2px solid var(--gold);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .1s;
+}
+.stick--aim.is-firing {
+  border-color: #ffe09b;
+  background-color: #f5c66a24;
+}
+.stick--aim.is-firing::after { opacity: .7; }
+.stick--aim.is-firing i {
+  background: radial-gradient(circle, #fff2bdc9, #f5c66a75 45%, #e493282e);
+  border-color: #fff2bd;
+}
+.stick--aim.is-firing span { color: #ffe09b; }

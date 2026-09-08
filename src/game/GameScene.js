@@ -5,6 +5,8 @@ import { MAP } from '../../server/config.js';
 import { createTerrain } from './TerrainView.js';
 import { AimView } from './AimView.js';
 import { bindCanvasPointer } from './canvasPointer.js';
+import { FireFeedback } from './FireFeedback.js';
+import { smoothingAlpha } from './motion.js';
 
 const SHEETS = {
   shana: [181, 181, './assets/heroes/shana.webp'],
@@ -41,6 +43,7 @@ export class GameScene extends Phaser.Scene {
     this.views = new EntityViews(this, () => this.bridge.input?.());
     this.fog = new FogView(this);
     this.aimView = new AimView(this);
+    this.fireFeedback = new FireFeedback(document.querySelector('#aim-stick'));
     this.setDisplay(this.bridge.getDisplay());
     this.bindPointer();
     this.bridge.ready(this);
@@ -63,18 +66,26 @@ export class GameScene extends Phaser.Scene {
     const target = this.views.apply(snapshot);
     this.fog.draw(snapshot.vision);
     if (target && this.cameras.main._follow !== target) {
-      this.cameras.main.startFollow(target, true, .12, .12);
+      this.cameras.main.startFollow(target, false, .12, .12);
     }
   }
 
   reset() {
     this.latest = null; this.cameras.main.stopFollow();
     this.views?.reset(); this.fog?.draw([]); this.aimView?.graphic.clear();
+    this.fireFeedback?.reset();
   }
 
   update(time, delta) {
-    this.views?.update(time, Math.min(50, delta));
-    this.aimView?.update(this.views?.items.get(this.latest?.you), this.bridge.input?.(), this.bridge.preview?.());
+    const frameMs = Math.min(50, delta);
+    this.views?.update(time, frameMs);
+    const playerView = this.views?.items.get(this.latest?.you);
+    const input = this.bridge.input?.();
+    const alpha = smoothingAlpha(frameMs, 100);
+    this.cameras.main.setLerp(alpha, alpha);
+    if (playerView?.justSnapped) this.cameras.main.centerOn(playerView.root.x, playerView.root.y);
+    this.aimView?.update(playerView, input, this.bridge.preview?.());
+    this.fireFeedback?.update(playerView?.entity, this.latest?.now, input?.attack, this.views?.playing && Boolean(input?.attack !== undefined));
   }
 }
 

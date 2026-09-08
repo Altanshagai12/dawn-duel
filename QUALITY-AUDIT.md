@@ -52,7 +52,7 @@ unbounded stat growth. Five minions spawn per side every24s; relics last45s.
 
 ## Verification and honest limits
 
-- `npm run check`: 144 unit/regression tests, client/server builds, 24 asset
+- `npm run check`: 162 unit/regression tests, client/server builds, 24 asset
   checks, SDK contract check and real signed-token direct-WebSocket smoke.
 - Balance simulations: all16 bot matchups complete by10minutes; team-swapped
   stationary duels stay within225HP survivor margin. Complete contested
@@ -79,3 +79,30 @@ unbounded stat growth. Five minions spawn per side every24s; relics last45s.
   was not changed. Full direct smoke separately verifies simultaneous reconnect.
 - Physical iOS/Android device and human competitive playtesting remain necessary.
   Automated tests and critic review are not an “AAA” certification.
+
+## Smooth combat presentation follow-up
+
+- Basic fire no longer draws a persistent world aiming ray. The attack joystick
+  lights immediately on hold and flashes only when a new authoritative basic
+  attack is acknowledged. Q/E previews and actual shots/impacts are unchanged.
+  Wounded, disabled, disconnected and reset states clear feedback; reduced-motion
+  users retain steady feedback without the flash animation.
+- Local prediction advances its correction anchor between snapshots instead of
+  chasing a stationary stale point every frame. Camera damping is frame-rate
+  independent and subpixel; sprite direction has a small hysteresis and holds
+  while idle. Remote units interpolate buffered, fog-filtered positions rather
+  than exponentially chasing each newest packet. Projectiles use a shorter
+  presentation delay and never extrapolate beyond visible server samples.
+- Prediction remains collision-checked and bounded to 300ms of packet silence.
+  Death/dash snaps stay latched across queued snapshots; old/duplicate timestamps
+  cannot rewind prediction or extend freshness. Reset clears the presentation
+  clock so a new session can start at an earlier simulation time.
+- Start/release edges send immediately; held joystick movement keeps the normal
+  20Hz input cadence. Mouse, keyboard and touch firing holds are independent.
+  Hidden draft rendering is skipped during play; repeated phase/label mutations
+  are avoided. Balance, authoritative simulation and transport are unchanged.
+- Regression tests cover 30/60/120 FPS motion response, interpolation, stale
+  packets, fog removal, collision, lifecycle interleavings, input source overlap
+  and feedback acknowledgement. Browser play checked both 844x390 landscape and
+  rotated 390x700 portrait frames with hold/release feedback. A local-only control
+  fixture is excluded from the release. This is not a physical-device FPS benchmark.

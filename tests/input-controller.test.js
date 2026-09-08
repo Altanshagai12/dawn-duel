@@ -71,6 +71,18 @@ test('far drag cancels skill without consuming an action', t => {
   assert.equal(sent.length, 0); assert.equal(input.preview, null);
 });
 
+test('joystick, keyboard and mouse start/release edges send without waiting for the 50ms heartbeat', t => {
+  const { input, nodes, sent, root } = setup(t); input.setEnabled(true);
+  const stick = nodes['#aim-stick'];
+  event(stick, 'pointerdown', { pointerId: 1, clientX: 90, clientY: 50 });
+  assert.equal(sent.at(-1).attack, true);
+  event(stick, 'pointerup', { pointerId: 1 }); assert.equal(sent.at(-1).attack, false);
+  event(root, 'keydown', { code: 'KeyD' }); assert.equal(sent.at(-1).moveX, 1);
+  event(root, 'keyup', { code: 'KeyD' }); assert.equal(sent.at(-1).moveX, 0);
+  input.setAttack(true); assert.equal(sent.at(-1).attack, true);
+  input.setAttack(false); assert.equal(sent.at(-1).attack, false);
+});
+
 test('second finger cannot release another finger movement; disconnect releases captures and neutralizes input', t => {
   const { input, nodes, sent } = setup(t); input.setEnabled(true);
   const stick = nodes['#move-stick'];
@@ -92,6 +104,22 @@ test('keyboard blocks scrolling, ignores held repeat skill and sends neutral sta
   event(root, 'blur'); assert.equal(sent.at(-1).moveY, 0);
   input.setEnabled(false); event(root, 'keydown', { code: 'KeyW' });
   input.setEnabled(true); assert.equal(input.state.moveY, 0);
+});
+
+test('releasing mouse or keyboard does not cancel a still-held firing joystick', t => {
+  const { input, nodes, root } = setup(t); input.setEnabled(true);
+  const stick = nodes['#aim-stick'];
+  event(stick, 'pointerdown', { pointerId: 1, clientX: 90, clientY: 50 });
+  input.setAttack(true); input.setAttack(false);
+  assert.equal(input.state.attack, true);
+  event(root, 'keydown', { code: 'Space' });
+  event(root, 'keyup', { code: 'Space' });
+  assert.equal(input.state.attack, true);
+  event(stick, 'pointerup', { pointerId: 1 });
+  assert.equal(input.state.attack, false);
+  input.setAttack(true); event(root, 'keydown', { code: 'Space' });
+  event(root, 'blur');
+  assert.equal(input.state.attack, false); assert.equal(input.attackSources.size, 0);
 });
 
 test('latest-only transport preserves released skill presses without replaying them', t => {

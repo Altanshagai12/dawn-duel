@@ -6,7 +6,8 @@ export class AimView {
   constructor(scene) { this.graphic = scene.add.graphics().setDepth(790); }
   update(playerView, input, preview) {
     const g = this.graphic; g.clear();
-    if (!playerView || (!preview && !input?.attack)) return;
+    // Basic fire is communicated on the joystick, not by a persistent world ray.
+    if (!playerView || !preview) return;
     const player = playerView.entity, origin = playerView.root;
     const skill = preview ? HEROES[player.hero]?.skills[preview.index] : null;
     const color = preview?.cancelled ? 0xff6b72 : 0xa6f5de;

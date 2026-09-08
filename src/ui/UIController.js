@@ -106,6 +106,8 @@ export class UIController {
   }
 
   setPhase(phase) {
+    if (this.currentPhase === phase) return;
+    this.currentPhase = phase;
     const visible = phaseVisibility(phase);
     $('#hero-screen').classList.toggle('screen--active', visible.draft);
     $('#hud').classList.toggle('is-hidden', !visible.battle);
@@ -187,7 +189,8 @@ export class UIController {
     if (!snapshot?.players) return;
     const { you, rival, ownCore, rivalCore } = teamHud(snapshot);
     if (!you) return;
-    this.updateDraft(snapshot);
+    if (snapshot.match.phase === 'select') this.updateDraft(snapshot);
+    else this.lastDraft = snapshot;
     if (you.hero && you.hero !== this.currentHero) this.selectHero(you.hero);
     this.setPhase(snapshot.match.phase);
     const seconds = Math.floor(snapshot.match.matchTime || 0);

@@ -22,6 +22,12 @@ backing pixels; joystick, skill drag and pointer aiming invert that rotation.
 Real landscape frames render normally. This requires no native app release or
 registry/SDK changes. All game source, assets, tests and deployment stay here.
 
+Basic fire has no persistent world aiming ray: the attack joystick lights while
+held and pulses on an authoritative shot. Real projectiles/impacts and deliberate
+Q/E targeting previews remain. Frame-rate-independent camera damping, bounded
+local prediction and buffered remote motion reduce packet-to-packet judder
+without changing movement speed, damage, cooldowns or server authority.
+
 The authoritative simulation runs on the game's dedicated direct-mode server,
 authenticated with Usion's short-lived signed room tokens. Clients send
 normalized input only; movement, hits, damage, XP, cooldowns, fog visibility,

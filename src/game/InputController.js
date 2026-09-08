@@ -1,7 +1,9 @@
+import { gameVectorFromClient } from '../ui/orientation.js';
+
 const clamp = value => Math.max(-1, Math.min(1, value));
 const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight', 'Space', 'KeyQ', 'KeyE']);
 
-function bindStick(root, enabled, onMove, onRelease) {
+function bindStick(root, enabled, onMove, onRelease, onEdge) {
   const knob = root.querySelector('i');
   let pointer = null;
   const move = event => {
@@ -20,11 +22,13 @@ function bindStick(root, enabled, onMove, onRelease) {
     const captured = pointer; pointer = null;
     if (captured !== null && root.hasPointerCapture?.(captured)) root.releasePointerCapture(captured);
     knob.style.transform = 'translate(0, 0)'; onRelease();
+    if (captured !== null) onEdge();
   };
   root.addEventListener('pointerdown', event => {
     if (!enabled() || pointer !== null) return;
     event.preventDefault(); pointer = event.pointerId;
     root.setPointerCapture(pointer); move(event);
+    onEdge();
   });
   root.addEventListener('pointermove', event => { if (event.pointerId === pointer) move(event); });
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) root.addEventListener(type, release);
@@ -35,14 +39,15 @@ export class InputController {
   constructor(send) {
     this.send = send;
     this.state = { moveX: 0, moveY: 0, aimX: 1, aimY: 0, attack: false, skill1: false, skill2: false, skill1Press: 0, skill2Press: 0 };
+    this.attackSources = new Set();
     this.keys = new Set(); this.seq = 0; this.enabled = false; this.preview = null;
     this.releaseMove = bindStick(document.querySelector('#move-stick'), () => this.enabled, (x, y) => {
       this.state.moveX = x; this.state.moveY = y;
-    }, () => { this.state.moveX = 0; this.state.moveY = 0; });
+    }, () => { this.state.moveX = 0; this.state.moveY = 0; }, () => this.flush());
     this.releaseAim = bindStick(document.querySelector('#aim-stick'), () => this.enabled, (x, y) => {
       if (Math.hypot(x, y) > .12) { this.state.aimX = x; this.state.aimY = y; }
-      this.state.attack = true;
-    }, () => { this.state.attack = false; });
+      this.setAttack(true, 'stick', false);
+    }, () => this.setAttack(false, 'stick', false), () => this.flush());
     this.cancelSkills = [this.bindSkill('#skill-1', 0), this.bindSkill('#skill-2', 1)];
     this.bindKeyboard(); this.timer = setInterval(() => this.flush(), 50);
   }
@@ -97,16 +102,18 @@ export class InputController {
       event.preventDefault();
       if (this.keys.has(event.code)) return;
       this.keys.add(event.code);
-      if (event.code === 'Space') this.state.attack = true;
+      if (event.code === 'Space') this.setAttack(true, 'keyboard', false);
       if (event.code === 'KeyQ' || event.code === 'KeyE') this.pressSkill(event.code === 'KeyQ' ? 0 : 1);
       update();
+      if (event.code !== 'KeyQ' && event.code !== 'KeyE') this.flush();
     });
     addEventListener('keyup', event => {
       if (!GAME_KEYS.has(event.code)) return;
       if (this.enabled) event.preventDefault();
       this.keys.delete(event.code);
-      if (event.code === 'Space') this.state.attack = false;
+      if (event.code === 'Space') this.setAttack(false, 'keyboard', false);
       update();
+      this.flush();
     });
     addEventListener('blur', () => { this.reset(); this.flush(); });
     for (const type of ['resize', 'orientationchange']) {
@@ -122,6 +129,15 @@ export class InputController {
     this.state.aimX = dx / length; this.state.aimY = dy / length;
   }
 
+  setAttack(active, source = 'pointer', immediate = true) {
+    if (this.enabled && active) this.attackSources.add(source);
+    else this.attackSources.delete(source);
+    const attack = this.enabled && this.attackSources.size > 0;
+    if (attack === this.state.attack) return;
+    this.state.attack = attack;
+    if (immediate) this.flush();
+  }
+
   setEnabled(enabled) {
     if (this.enabled && !enabled) { this.reset(); this.flush(); }
     this.enabled = Boolean(enabled);
@@ -134,6 +150,7 @@ export class InputController {
   resetSession() { this.reset(); this.state.skill1Press = 0; this.state.skill2Press = 0; }
 
   reset() {
+    this.attackSources.clear(); this.state.attack = false;
     this.releaseMove(); this.releaseAim(); this.cancelSkills.forEach(cancel => cancel());
     this.state.skill1 = false; this.state.skill2 = false; this.keys.clear();
   }
@@ -143,4 +160,3 @@ export class InputController {
     this.seq += 1; this.send({ seq: this.seq, ...this.state });
   }
 }
-import { gameVectorFromClient } from '../ui/orientation.js';

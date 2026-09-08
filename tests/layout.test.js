@@ -82,6 +82,6 @@ test('the client contains no standalone buff shrine renderer or HUD copy', () =>
 
 test('production loads one versioned client bundle so stale modules cannot mix', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  assert.match(html, /<script type="module" src="\.\/app\.v5\.js"><\/script>/);
+  assert.match(html, /<script type="module" src="\.\/app\.v6\.js"><\/script>/);
   assert.doesNotMatch(html, /src="\.\/src\/main\.js"/);
 });
