@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { exportJWK, generateKeyPair, SignJWT } from 'jose';
+import WebSocket from 'ws';
+import { createDirectRuntime, FINISHED_ROOM_TTL_MS } from '../server/direct-runtime.js';
 import { allowMessage, MAX_INPUT_BYTES, payloadSize, sendFrame } from '../server/direct-wire.js';
 import { ResultOutbox } from '../server/result-outbox.js';
 import { createResultPayload, resultIdempotencyKey, submitResult } from '../server/result-submit.js';
@@ -130,4 +134,94 @@ test('failed results survive an outbox restart with one idempotency key', async 
     assert.deepEqual(sent, [key]);
     assert.deepEqual(JSON.parse(readFileSync(path, 'utf8')), []);
   } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+async function waitUntil(predicate, message, timeout = 3000) {
+  const deadline = Date.now() + timeout;
+  while (!predicate()) {
+    if (Date.now() >= deadline) assert.fail(message);
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+}
+
+test('finished direct rooms stop broadcasting, reconnect once, and expire with live viewers while results retry', async t => {
+  const directory = mkdtempSync(join(tmpdir(), 'dawn-finished-room-'));
+  const outboxPath = join(directory, 'results.json');
+  const { privateKey, publicKey } = await generateKeyPair('RS256');
+  const jwk = { ...(await exportJWK(publicKey)), kid: 'runtime-finish', alg: 'RS256', use: 'sig' };
+  const platform = createServer((_request, response) => {
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ keys: [jwk] }));
+  });
+  await new Promise(resolve => platform.listen(0, '127.0.0.1', resolve));
+  const attempts = []; let acceptResults = false;
+  const runtime = createDirectRuntime({
+    port: 0, serviceId: 'service', sharedSecret: 'secret', keyId: 'key', outboxPath,
+    apiUrl: 'https://example.test', jwksUrl: `http://127.0.0.1:${platform.address().port}/jwks`,
+    fetchImpl: async (_url, options) => {
+      attempts.push(options.headers['X-Idempotency-Key']);
+      return { status: acceptResults ? 200 : 503, ok: acceptResults, json: async () => ({ success: true }) };
+    },
+  });
+  const address = await new Promise(resolve => runtime.listen(resolve));
+  const clients = [];
+  t.after(async () => {
+    for (const client of clients) client.socket.terminate();
+    await runtime.close();
+    await new Promise(resolve => platform.close(resolve));
+    rmSync(directory, { recursive: true, force: true });
+  });
+  async function connect(id, sessionId) {
+    const token = await new SignJWT({
+      room_id: 'finished-room', service_id: 'service', session_id: sessionId,
+      host_id: 'host', permissions: ['play'], name: id,
+    }).setProtectedHeader({ alg: 'RS256', kid: jwk.kid }).setSubject(id)
+      .setIssuer('usion-backend').setAudience('usion-game-service:service')
+      .setIssuedAt().setExpirationTime('5m').sign(privateKey);
+    const socket = new WebSocket(`ws://127.0.0.1:${address.port}/ws?token=${encodeURIComponent(token)}`);
+    const client = { socket, frames: [], closed: null };
+    clients.push(client);
+    socket.on('message', raw => client.frames.push(JSON.parse(raw.toString())));
+    socket.on('close', code => { client.closed = code; });
+    await new Promise((resolve, reject) => { socket.once('open', resolve); socket.once('error', reject); });
+    socket.send(JSON.stringify({
+      type: 'join', room_id: 'finished-room', session_id: sessionId,
+      protocol_version: '2', seq: 1, ts: Date.now(), payload: {},
+    }));
+    await waitUntil(() => client.frames.some(frame => frame.type === 'state_delta'), `${id} did not receive its initial snapshot`);
+    return client;
+  }
+  const host = await connect('host', 'host-session');
+  const guest = await connect('guest', 'guest-session');
+  const room = runtime.rooms.get('finished-room');
+  Object.assign(room.state.world, { phase: 'finished', winnerTeam: 0, finishReason: 'core' });
+  await waitUntil(() => room.ended && attempts.length > 0, 'finished result was not queued');
+  await waitUntil(() => host.frames.some(frame => frame.type === 'match_end'), 'host did not receive final result');
+  const frozenTime = room.state.world.roomNow;
+  const finished = client => client.frames.filter(frame => frame.payload?.data?.match?.phase === 'finished');
+  const hostCount = host.frames.length; const guestCount = guest.frames.length;
+  await new Promise(resolve => setTimeout(resolve, 120));
+  assert.equal(host.frames.length, hostCount);
+  assert.equal(guest.frames.length, guestCount);
+  assert.equal(finished(host).length, 1);
+  assert.equal(finished(guest).length, 1);
+  assert.equal(room.state.world.roomNow, frozenTime);
+
+  const reconnected = await connect('host', 'host-reconnect');
+  assert.equal(finished(reconnected).length, 1);
+  assert.equal(reconnected.frames.filter(frame => frame.type === 'match_end').length, 1);
+  assert.equal(guest.frames.length, guestCount, 'finished rooms must not broadcast join activity');
+  assert.equal(runtime.rooms.has('finished-room'), true);
+  assert.equal(JSON.parse(readFileSync(outboxPath, 'utf8')).length, 1);
+
+  room.endedAt = Date.now() - FINISHED_ROOM_TTL_MS;
+  await waitUntil(() => !runtime.rooms.has('finished-room'), 'connected result viewers retained the expired room');
+  await waitUntil(() => reconnected.closed !== null && guest.closed !== null, 'expired room sockets stayed open');
+  assert.equal(reconnected.closed, 1000);
+  assert.equal(guest.closed, 1000);
+  assert.equal(JSON.parse(readFileSync(outboxPath, 'utf8')).length, 1, 'cleanup lost the queued result');
+  acceptResults = true;
+  await waitUntil(() => JSON.parse(readFileSync(outboxPath, 'utf8')).length === 0, 'result did not retry after room cleanup');
+  assert.ok(attempts.length >= 2);
+  assert.equal(new Set(attempts).size, 1);
 });

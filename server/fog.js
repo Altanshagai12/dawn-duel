@@ -66,16 +66,22 @@ function playerSummary(world, player, visible, viewerId) {
     protectUntil: player.protectUntil,
     slowUntil: player.slowUntil,
     slowRatio: player.slowRatio,
-    skillReady: player.skillReady,
-    basicReadyAt: player.basicReadyAt,
-    offer: player.offer,
-    offerExpiresAt: player.offerExpiresAt,
-    relicOffer: player.relicOffer,
     relic: player.relic,
     relicUntil: player.relicUntil,
     bossPowerUntil: player.bossPowerUntil,
-    ranks: player.ranks,
-    xp: player.xp,
+    ...(player.id === viewerId ? {
+      skillReady: player.skillReady,
+      basicReadyAt: player.basicReadyAt,
+      skill1Press: player.input.skill1Press || 0,
+      skill2Press: player.input.skill2Press || 0,
+      guardianProgress: [0, 1].map(side => world.campProgress[side].killerId === viewerId ? world.campProgress[side].ids.length : 0),
+      offer: player.offer,
+      offerExpiresAt: player.offerExpiresAt,
+      offerRerolled: Boolean(player.offerRerolled),
+      relicOffer: player.relicOffer,
+      ranks: player.ranks,
+      xp: player.xp,
+    } : {}),
   };
 }
 
@@ -124,6 +130,7 @@ export function filterSnapshot(world, viewerId) {
       .filter(projectile => isPointVisible(world, team, projectile))
       .map(publicProjectile),
     effects: world.effects.filter(effect => {
+      if (effect.kind === 'defeat' && effect.targetId === viewerId) return true;
       if (!Number.isFinite(effect.x)) return true;
       if (!isPointVisible(world, team, effect)) return false;
       return !Number.isFinite(effect.tx) || isPointVisible(world, team, { x: effect.tx, y: effect.ty });

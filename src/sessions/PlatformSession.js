@@ -34,6 +34,11 @@ export class PlatformSession {
         if (you?.hero === this.pendingHero) this.pendingHero = null;
         if (you?.ready === this.pendingReady) this.pendingReady = null;
         this.emit(payload.data);
+        if (payload.data.match?.phase === 'finished' && !this.finished) {
+          this.finished = true;
+          this.connected = false;
+          game.disconnect(); // Keep the result; do not reconnect to an expired room.
+        }
       }
       if (payload?.event === 'duel_error') this.setStatus('error', payload.data);
     }));
@@ -69,6 +74,7 @@ export class PlatformSession {
   }
 
   async connect(roomId) {
+    if (this.finished) return;
     if (!roomId) throw new Error('No multiplayer room assigned');
     this.roomId = roomId;
     if (this.connected) { this.setStatus('ready'); return; }
@@ -86,16 +92,19 @@ export class PlatformSession {
   onRoomAssigned(listener) { this.roomListeners.add(listener); return () => this.roomListeners.delete(listener); }
   emit(snapshot) { for (const listener of this.listeners) listener(snapshot); }
   setStatus(status, detail) {
+    if (this.finished) return;
     this.status = status;
     for (const listener of this.statusListeners) listener(status, detail);
   }
   markReady(data) {
+    if (this.finished) return;
     this.connected = true;
     this.setStatus('ready');
     if (this.pendingHero) window.Usion.game.realtime('select_hero', { hero: this.pendingHero });
     if (this.pendingReady !== null) window.Usion.game.realtime('ready', { ready: this.pendingReady });
   }
   command(type, data = {}) {
+    if (this.finished) return false;
     if (type === 'select_hero') this.pendingHero = data.hero || null;
     if (type === 'ready') this.pendingReady = data.ready !== false;
     if (!this.connected) return false;

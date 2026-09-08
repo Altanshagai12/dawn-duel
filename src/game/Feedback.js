@@ -14,6 +14,8 @@ export class Feedback {
     void this.context.resume();
   }
 
+  reset() { this.seen.clear(); this.lastHp = null; }
+
   tone(frequency, duration = 0.05, gain = 0.025, type = 'sine') {
     if (!this.context || this.context.state !== 'running' || performance.now() - this.lastToneAt < 35) return;
     this.lastToneAt = performance.now();

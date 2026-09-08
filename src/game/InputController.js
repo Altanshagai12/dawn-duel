@@ -1,119 +1,140 @@
 const clamp = value => Math.max(-1, Math.min(1, value));
+const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight', 'Space', 'KeyQ', 'KeyE']);
 
-function bindStick(root, onMove, onRelease) {
+function bindStick(root, enabled, onMove, onRelease) {
   const knob = root.querySelector('i');
+  let pointer = null;
   const move = event => {
     const rect = root.getBoundingClientRect();
     const dx = event.clientX - rect.left - rect.width / 2;
     const dy = event.clientY - rect.top - rect.height / 2;
-    const radius = rect.width * 0.34;
-    const distance = Math.hypot(dx, dy) || 1;
-    const scale = Math.min(1, radius / distance);
-    const x = dx * scale;
-    const y = dy * scale;
-    knob.style.transform = `translate(${x}px, ${y}px)`;
-    onMove(clamp(x / radius), clamp(y / radius));
+    const radius = rect.width * .34;
+    const scale = Math.min(1, radius / (Math.hypot(dx, dy) || 1));
+    knob.style.transform = `translate(${dx * scale}px, ${dy * scale}px)`;
+    onMove(clamp(dx * scale / radius), clamp(dy * scale / radius));
   };
   const release = event => {
-    if (event && root.hasPointerCapture?.(event.pointerId)) root.releasePointerCapture(event.pointerId);
-    knob.style.transform = 'translate(0, 0)';
-    onRelease();
+    if (event && event.pointerId !== pointer) return;
+    const captured = pointer; pointer = null;
+    if (captured !== null && root.hasPointerCapture?.(captured)) root.releasePointerCapture(captured);
+    knob.style.transform = 'translate(0, 0)'; onRelease();
   };
   root.addEventListener('pointerdown', event => {
-    event.preventDefault(); root.setPointerCapture(event.pointerId); move(event);
+    if (!enabled() || pointer !== null) return;
+    event.preventDefault(); pointer = event.pointerId;
+    root.setPointerCapture(pointer); move(event);
   });
-  root.addEventListener('pointermove', event => {
-    if (root.hasPointerCapture(event.pointerId)) move(event);
-  });
-  root.addEventListener('pointerup', release);
-  root.addEventListener('pointercancel', release);
-  root.addEventListener('lostpointercapture', () => { knob.style.transform = 'translate(0, 0)'; onRelease(); });
+  root.addEventListener('pointermove', event => { if (event.pointerId === pointer) move(event); });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) root.addEventListener(type, release);
   return release;
 }
 
 export class InputController {
   constructor(send) {
     this.send = send;
-    this.state = { moveX: 0, moveY: 0, aimX: 1, aimY: 0, attack: false, skill1: false, skill2: false };
-    this.keys = new Set();
-    this.seq = 0;
-    this.enabled = false;
-    this.releaseMove = bindStick(document.querySelector('#move-stick'), (x, y) => {
+    this.state = { moveX: 0, moveY: 0, aimX: 1, aimY: 0, attack: false, skill1: false, skill2: false, skill1Press: 0, skill2Press: 0 };
+    this.keys = new Set(); this.seq = 0; this.enabled = false; this.preview = null;
+    this.releaseMove = bindStick(document.querySelector('#move-stick'), () => this.enabled, (x, y) => {
       this.state.moveX = x; this.state.moveY = y;
     }, () => { this.state.moveX = 0; this.state.moveY = 0; });
-    this.releaseAim = bindStick(document.querySelector('#aim-stick'), (x, y) => {
-      if (Math.hypot(x, y) > 0.12) { this.state.aimX = x; this.state.aimY = y; }
+    this.releaseAim = bindStick(document.querySelector('#aim-stick'), () => this.enabled, (x, y) => {
+      if (Math.hypot(x, y) > .12) { this.state.aimX = x; this.state.aimY = y; }
       this.state.attack = true;
     }, () => { this.state.attack = false; });
-    this.bindSkill('#skill-1', 'skill1');
-    this.bindSkill('#skill-2', 'skill2');
-    this.bindKeyboard();
-    this.timer = setInterval(() => this.flush(), 50);
+    this.cancelSkills = [this.bindSkill('#skill-1', 0), this.bindSkill('#skill-2', 1)];
+    this.bindKeyboard(); this.timer = setInterval(() => this.flush(), 50);
   }
 
-  bindSkill(selector, key) {
+  bindSkill(selector, index) {
     const button = document.querySelector(selector);
-    const release = () => { this.state[key] = false; };
+    let gesture = null;
+    const cancel = () => {
+      const pointer = gesture?.pointer; gesture = null; this.preview = null;
+      if (pointer != null && button.hasPointerCapture(pointer)) button.releasePointerCapture(pointer);
+      button.classList.remove('is-aiming', 'is-cancelling');
+    };
     button.addEventListener('pointerdown', event => {
-      event.preventDefault(); button.setPointerCapture(event.pointerId); this.state[key] = true; this.flush();
+      if (!this.enabled || button.disabled || gesture || this.preview) return;
+      event.preventDefault();
+      gesture = { pointer: event.pointerId, x: event.clientX, y: event.clientY, cancel: false };
+      button.setPointerCapture(event.pointerId); button.classList.add('is-aiming');
+      this.preview = { index, aimX: this.state.aimX, aimY: this.state.aimY, cancelled: false };
     });
-    button.addEventListener('pointerup', release);
-    button.addEventListener('pointercancel', release);
-    button.addEventListener('lostpointercapture', release);
+    button.addEventListener('pointermove', event => {
+      if (!gesture || gesture.pointer !== event.pointerId) return;
+      const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y;
+      const length = Math.hypot(dx, dy);
+      gesture.cancel = length > 150;
+      if (length > 9) { this.state.aimX = dx / length; this.state.aimY = dy / length; }
+      this.preview = { index, aimX: this.state.aimX, aimY: this.state.aimY, cancelled: gesture.cancel };
+      button.classList.toggle('is-cancelling', gesture.cancel);
+    });
+    button.addEventListener('pointerup', event => {
+      if (!gesture || gesture.pointer !== event.pointerId) return;
+      const cast = !gesture.cancel && this.enabled && !button.disabled; cancel();
+      if (cast) this.pressSkill(index);
+    });
+    for (const type of ['pointercancel', 'lostpointercapture']) button.addEventListener(type, cancel);
+    return cancel;
+  }
+
+  pressSkill(index) {
+    const key = index === 0 ? 'skill1' : 'skill2';
+    this.state[`${key}Press`] += 1;
+    this.state[key] = true; this.flush();
+    this.state[key] = false; this.flush();
   }
 
   bindKeyboard() {
     const update = () => {
-      this.state.moveX = (this.keys.has('KeyD') || this.keys.has('ArrowRight') ? 1 : 0)
-        - (this.keys.has('KeyA') || this.keys.has('ArrowLeft') ? 1 : 0);
-      this.state.moveY = (this.keys.has('KeyS') || this.keys.has('ArrowDown') ? 1 : 0)
-        - (this.keys.has('KeyW') || this.keys.has('ArrowUp') ? 1 : 0);
+      this.state.moveX = Number(this.keys.has('KeyD') || this.keys.has('ArrowRight')) - Number(this.keys.has('KeyA') || this.keys.has('ArrowLeft'));
+      this.state.moveY = Number(this.keys.has('KeyS') || this.keys.has('ArrowDown')) - Number(this.keys.has('KeyW') || this.keys.has('ArrowUp'));
     };
     addEventListener('keydown', event => {
-      if (['INPUT', 'TEXTAREA'].includes(event.target?.tagName)) return;
+      if (!this.enabled || !GAME_KEYS.has(event.code) || ['INPUT', 'TEXTAREA'].includes(event.target?.tagName)) return;
+      event.preventDefault();
+      if (this.keys.has(event.code)) return;
       this.keys.add(event.code);
       if (event.code === 'Space') this.state.attack = true;
-      if (event.code === 'KeyQ') this.state.skill1 = true;
-      if (event.code === 'KeyE') this.state.skill2 = true;
+      if (event.code === 'KeyQ' || event.code === 'KeyE') this.pressSkill(event.code === 'KeyQ' ? 0 : 1);
       update();
     });
     addEventListener('keyup', event => {
+      if (!GAME_KEYS.has(event.code)) return;
+      if (this.enabled) event.preventDefault();
       this.keys.delete(event.code);
       if (event.code === 'Space') this.state.attack = false;
-      if (event.code === 'KeyQ') this.state.skill1 = false;
-      if (event.code === 'KeyE') this.state.skill2 = false;
       update();
     });
-    addEventListener('blur', () => this.reset());
-    document.addEventListener('visibilitychange', () => { if (document.hidden) this.reset(); });
+    addEventListener('blur', () => { this.reset(); this.flush(); });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) { this.reset(); this.flush(); } });
   }
 
   pointAim(worldX, worldY, player) {
-    if (!player || !Number.isFinite(worldX)) return;
-    const dx = worldX - player.x;
-    const dy = worldY - player.y;
+    if (!this.enabled || !player || !Number.isFinite(worldX) || !Number.isFinite(worldY)) return;
+    const dx = worldX - player.x, dy = worldY - player.y;
     const length = Math.hypot(dx, dy) || 1;
-    this.state.aimX = dx / length;
-    this.state.aimY = dy / length;
+    this.state.aimX = dx / length; this.state.aimY = dy / length;
   }
 
   setEnabled(enabled) {
-    if (this.enabled && !enabled) {
-      this.reset();
-      this.seq += 1;
-      this.send({ seq: this.seq, ...this.state });
-    }
-    this.enabled = enabled;
+    if (this.enabled && !enabled) { this.reset(); this.flush(); }
+    this.enabled = Boolean(enabled);
   }
 
+  reconcile(player) {
+    for (const key of ['skill1Press', 'skill2Press']) this.state[key] = Math.max(this.state[key], player?.[key] || 0);
+  }
+
+  resetSession() { this.reset(); this.state.skill1Press = 0; this.state.skill2Press = 0; }
+
   reset() {
-    this.state.moveX = 0; this.state.moveY = 0; this.state.attack = false;
+    this.releaseMove(); this.releaseAim(); this.cancelSkills.forEach(cancel => cancel());
     this.state.skill1 = false; this.state.skill2 = false; this.keys.clear();
   }
 
   flush() {
     if (!this.enabled) return;
-    this.seq += 1;
-    this.send({ seq: this.seq, ...this.state });
+    this.seq += 1; this.send({ seq: this.seq, ...this.state });
   }
 }

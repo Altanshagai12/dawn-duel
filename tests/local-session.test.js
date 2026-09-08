@@ -20,3 +20,17 @@ test('standalone practice keeps a neutral local fallback', () => {
     session.stop();
   }
 });
+
+test('practice emits the final result once and stops advancing the simulation', () => {
+  const session = new LocalSession();
+  try {
+    session.world.phase = 'finished';
+    session.last = performance.now() - 50;
+    let emitted = 0; session.onSnapshot(() => emitted++);
+    session.frame(); const tick = session.world.snapshotTick;
+    session.last = performance.now() - 100; session.frame();
+    assert.equal(emitted, 1);
+    assert.equal(session.world.snapshotTick, tick);
+    assert.equal(session.finalEmitted, true);
+  } finally { session.stop(); }
+});

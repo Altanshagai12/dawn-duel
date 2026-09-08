@@ -24,6 +24,8 @@ export class LocalSession {
 
   frame() {
     const now = performance.now();
+    if (globalThis.document?.hidden) { this.last = now; return; }
+    if (this.world.phase === 'finished' && this.finalEmitted) return;
     this.accumulator += Math.min(100, now - this.last) / 1000;
     this.last = now;
     while (this.accumulator >= 1 / 30) {
@@ -33,6 +35,7 @@ export class LocalSession {
       stepWorld(this.world, 1 / 30);
       this.accumulator -= 1 / 30;
       if (this.world.snapshotTick % 2 === 0 || this.world.phase !== 'playing') this.emit();
+      if (this.world.phase === 'finished') { this.finalEmitted = true; clearInterval(this.timer); break; }
     }
   }
 

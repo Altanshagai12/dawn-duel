@@ -4,7 +4,7 @@ export const HEROES = Object.freeze({
     passive: 'reroll',
     skills: [
       { id: 'precision', cooldown: 9, damage: 170, range: 520, projectileSpeed: 900, icon: '✦' },
-      { id: 'volley', cooldown: 11, damage: 55, count: 3, spread: 0.11, range: 430, icon: '≋' },
+      { id: 'volley', cooldown: 11, damage: 55, count: 3, spread: 0.11, range: 430, slow: 0.15, slowSeconds: 0.75, icon: '≋' },
     ],
   },
   diamond: {
@@ -19,8 +19,8 @@ export const HEROES = Object.freeze({
     id: 'scarlett', name: 'Scarlett', nameMn: 'Скарлетт', atlas: 'scarlett', frameWidth: 181, frameHeight: 181,
     passive: 'thirdShotBurn',
     skills: [
-      { id: 'emberLine', cooldown: 11, damage: 140, burnDps: 15, burnSeconds: 2, range: 480, icon: '♨' },
-      { id: 'cinderFocus', cooldown: 12, charges: 3, bonusDamage: 15, duration: 6, icon: '△' },
+      { id: 'emberLine', cooldown: 11, damage: 140, burnDps: 15, burnSeconds: 2, range: 480, pierces: 2, icon: '♨' },
+      { id: 'cinderFocus', cooldown: 12, charges: 3, bonusDamage: 15, duration: 6, slow: 0.1, slowSeconds: 0.65, icon: '△' },
     ],
   },
   hina: {

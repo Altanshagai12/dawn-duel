@@ -1,5 +1,11 @@
 # Lessons
 
+- Treat transport coalescing as part of the input contract: a skill edge sent as true then false can disappear. Include monotonic press counters, consume once, and reconcile acknowledgements across reconnect.
+- Render playable terrain from authoritative geometry, using generated art only as clipped materials. A beautiful prepainted wall is a gameplay defect when collision disagrees.
+- Audit both team perspectives, simultaneous impacts, overlapped bodies, and contested boss timestamps; deterministic iteration order alone is not competitive fairness.
+- Fog privacy applies to visible opponents too: expose public combat state, not private cooldowns, future offers, exact XP or input acknowledgements.
+- A finished match is a terminal lifecycle: freeze simulation, emit once, disconnect clients intentionally and expire rooms without dropping result retries.
+
 - Never present an optimistic realtime command as server-confirmed. Pre-match UI must expose authoritative connection, player presence, and readiness, and the client must retain a hero choice made before the room join completes.
 - Multiplayer smoke assertions must compare against the player's assigned team, not assume concurrent clients always join in the same order.
 - Host and team authority must come only from the verified room token; a client-provided roster is cosmetic data and must never rewrite competitive state.
@@ -18,4 +24,5 @@
 - A phone MOBA must preserve one world-space field of view while scaling its backing canvas by a bounded device-pixel ratio; CSS size alone can look correct on desktop yet remain blurry on a real landscape phone.
 - Generate map art and authoritative navigation as one contract: every visible camp, wall, corridor, and entrance must use a matching reachable or blocked gameplay region, while paired objectives stay rotationally symmetric even when the illustration is ornamental.
 - Confirm the product noun before adding objective types: “buff” may describe a boss reward, not permission to add a separate shrine. Model the reward on the existing boss lifecycle unless the user explicitly asks for another capturable objective.
-- A game iframe cannot rotate native mobile chrome. Ship an orientation-capable Usion binary plus the service `landscape`/`moba` tag; the game should gate portrait play instead of compressing a wide battlefield or faking rotation with CSS.
+- A game iframe cannot rotate native mobile chrome. Ship an orientation-capable Usion binary plus the service `landscape`/`moba` tag; never compress or fake-rotate a wide battlefield with CSS.
+- When the requested experience is automatic landscape, do not replace it with a player-facing rotate gate. Carry the landscape service policy into native navigation before the game mounts; the game may request the browser lock silently, but must not ask the player to repair host orientation.

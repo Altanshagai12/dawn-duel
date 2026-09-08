@@ -25,15 +25,20 @@ function availableUpgrades(player) {
 
 export function createUpgradeOffer(world, player, reroll = false) {
   const ids = availableUpgrades(player);
-  const salt = Math.imul(player.level + (reroll ? 97 : 0), 2654435761);
+  if (!reroll) {
+    player.offerNumber = (player.offerNumber || 0) + 1;
+    player.offerRerolled = false;
+  }
+  const previous = reroll ? (player.offer || []) : [];
+  const salt = Math.imul((player.offerNumber || player.level) + (reroll ? 97 : 0), 2654435761);
   const ordered = seededOrder(ids, (world.matchSeed ^ salt) >>> 0);
-  player.offer = ordered.slice(0, 3);
-  player.offerExpiresAt = world.matchTime + CHOICE_SECONDS;
+  player.offer = [...ordered.filter(id => !previous.includes(id)), ...ordered.filter(id => previous.includes(id))].slice(0, 3);
+  if (!reroll) player.offerExpiresAt = world.matchTime + CHOICE_SECONDS;
   return player.offer;
 }
 
 export function awardXp(world, player, amount) {
-  if (!player || world.phase !== 'playing' || player.level >= XP_THRESHOLDS.length) return 0;
+  if (!player || !Number.isFinite(amount) || world.phase !== 'playing' || player.level >= XP_THRESHOLDS.length) return 0;
   const rival = world.playerOrder.map(id => world.players[id]).find(other => other && other.id !== player.id);
   const levels = world.xpLevelSnapshot;
   const playerLevel = levels?.[player.id] ?? player.level;
@@ -61,7 +66,7 @@ export function heroKillXp(killer, victim, now) {
 }
 
 export function chooseUpgrade(world, player, id) {
-  if (!player?.offer?.includes(id)) return false;
+  if (world.phase !== 'playing' || !player?.offer?.includes(id)) return false;
   const upgrade = UPGRADES[id];
   if (!upgrade || (player.ranks[id] || 0) >= upgrade.maxRank) return false;
   player.ranks[id] = (player.ranks[id] || 0) + 1;
@@ -79,8 +84,8 @@ export function chooseUpgrade(world, player, id) {
 }
 
 export function rerollUpgrade(world, player) {
-  if (player?.hero !== 'shana' || !player.offer || player.rerollLevel === player.level) return false;
-  player.rerollLevel = player.level;
+  if (world.phase !== 'playing' || player?.hero !== 'shana' || !player.offer || player.offerRerolled) return false;
+  player.offerRerolled = true;
   createUpgradeOffer(world, player, true);
   return true;
 }
@@ -104,9 +109,13 @@ export function offerRelic(world, player) {
 }
 
 export function chooseRelic(world, player, id) {
-  if (!player?.relicOffer?.ids?.includes(id) || !Object.hasOwn(RELICS, id)) return false;
+  if (world.phase !== 'playing' || !player?.relicOffer?.ids?.includes(id) || !Object.hasOwn(RELICS, id)) return false;
+  if (player.shieldSource === 'warden' && id !== 'warden') {
+    player.shield = 0;
+    player.shieldSource = null;
+  }
   player.relic = id;
-  player.relicUntil = world.matchTime + 45;
+  player.relicUntil = world.matchTime + CAMPS.relicSeconds;
   player.relicOffer = null;
   player.wardenReadyAt = world.matchTime;
   return true;

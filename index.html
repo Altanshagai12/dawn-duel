@@ -13,18 +13,13 @@
   <main id="app">
     <div id="game" aria-label="Dawn Duel battlefield"></div>
 
-    <section id="orientation-screen" aria-live="polite">
-      <div class="phone-turn" aria-hidden="true"><i></i></div>
-      <strong>УТСАА ХЭВТЭЭ БОЛГОНО УУ</strong>
-      <span>Тулаан зөвхөн өргөн landscape дэлгэцээр тоглогдоно.</span>
-    </section>
-
     <section id="boot-screen" class="screen screen--active">
       <div class="brand-mark">DD</div>
       <p class="eyebrow">USION ORIGINAL</p>
       <h1>DAWN <span>DUEL</span></h1>
       <p id="boot-copy">Тулааны талбарыг бэлдэж байна…</p>
       <div class="loader"><i></i></div>
+      <button id="boot-retry" class="primary is-hidden" type="button">Дахин оролдох / Retry</button>
     </section>
 
     <section id="hero-screen" class="screen" aria-labelledby="hero-title">
@@ -34,6 +29,8 @@
           <button id="language" class="chip" type="button">EN</button>
         </header>
         <div id="hero-grid" class="hero-grid"></div>
+        <p id="hero-kit" class="hero-kit"></p>
+        <p id="game-guide" class="game-guide"></p>
         <div class="draft-meta" aria-live="polite">
           <span id="draft-connection" class="draft-connection"><i></i><b>BOT БЭЛТГЭЛ</b></span>
           <span id="draft-roster">ТА · СОНГОНО</span>
@@ -55,11 +52,14 @@
       </div>
       <div id="network" class="network"><i></i><span>SOLO</span></div>
       <canvas id="minimap" width="192" height="108" aria-label="Minimap"></canvas>
+      <small id="objective-status" class="objective-status"></small>
       <div id="player-bars" class="player-bars">
         <small id="boss-power-status" class="boss-power-status is-hidden"></small>
         <div><span id="hero-name">SHANA</span><b id="hp-copy">1500 / 1500</b></div>
         <i><em id="hp-bar"></em><u id="shield-bar"></u></i>
         <i class="xp"><em id="xp-bar"></em></i>
+        <small id="build-summary" class="build-summary"></small>
+        <small id="relic-status" class="relic-status"></small>
       </div>
       <div id="announcement" class="announcement"></div>
     </div>
@@ -72,17 +72,18 @@
       </section>
 
       <section id="relic" class="choice-tray choice-tray--relic is-hidden" aria-live="polite">
-        <p id="relic-title">GUARDIAN RELIC</p>
+        <p id="relic-title">GUARDIAN RELIC <span id="relic-time">12</span></p>
         <div id="relic-options"></div>
       </section>
     </aside>
 
     <div id="controls" class="controls is-hidden">
-      <div id="move-stick" class="stick"><i></i><span>MOVE</span></div>
+      <div id="move-stick" class="stick"><i></i><span id="move-copy">MOVE</span></div>
       <div class="action-cluster">
         <button id="skill-1" class="skill" type="button"><b>Q</b><span id="skill-1-name">SKILL</span><i></i></button>
         <button id="skill-2" class="skill" type="button"><b>E</b><span id="skill-2-name">SKILL</span><i></i></button>
-        <div id="aim-stick" class="stick stick--aim"><i></i><span>FIRE</span></div>
+        <div id="aim-stick" class="stick stick--aim"><i></i><span id="fire-copy">FIRE</span></div>
+        <small id="skill-guide" class="skill-guide"></small>
       </div>
     </div>
 
@@ -91,6 +92,7 @@
         <p class="eyebrow">MATCH COMPLETE</p>
         <h2 id="result-title">VICTORY</h2>
         <p id="result-stats"></p>
+        <p id="result-reason"></p>
         <button id="practice-again" class="primary" type="button">Дахин бэлтгэл хийх</button>
         <p id="result-hint">Usion-ийн Share товчоор найзаа урьж бодит тулаан эхлүүлээрэй.</p>
       </div>
@@ -100,6 +102,6 @@
   </main>
   <script src="https://usions.com/vendor/phaser/4.2.1/phaser.min.js"></script>
   <script src="https://usions.com/usion-sdk.js"></script>
-  <script type="module" src="./app.v3.js"></script>
+  <script type="module" src="./app.v4.js"></script>
 </body>
 </html>

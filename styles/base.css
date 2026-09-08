@@ -18,20 +18,12 @@
 * { box-sizing: border-box; }
 html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #071010; }
 body { color: var(--ink); touch-action: none; user-select: none; }
+button:disabled { cursor: default; opacity: .5; }
+button:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 button { font: inherit; color: inherit; }
 #game, #game canvas { width: 100%; height: 100%; display: block; }
 #game { position: absolute; inset: 0; }
 .is-hidden { display: none !important; }
-
-#orientation-screen { display: none; }
-html.needs-landscape #orientation-screen {
-  position: fixed; inset: 0; z-index: 120; display: grid; place-content: center; gap: 12px;
-  padding: 28px; text-align: center; background: radial-gradient(circle, #163932, #061010 68%);
-}
-html.needs-landscape #orientation-screen strong { color: var(--gold); font-size: 17px; letter-spacing: .12em; }
-html.needs-landscape #orientation-screen span { color: var(--muted); font-size: 12px; }
-.phone-turn { width: 62px; height: 38px; margin: 0 auto 8px; border: 2px solid var(--gold); border-radius: 8px; transform: rotate(-8deg); }
-.phone-turn i { display: block; width: 4px; height: 4px; margin: 15px 4px 0 auto; border-radius: 50%; background: var(--gold); }
 
 .screen {
   position: absolute;
@@ -60,7 +52,10 @@ h1 span { color: transparent; -webkit-text-stroke: 1px var(--gold); }
 @keyframes load { to { transform: translateX(205%); } }
 
 .panel { width: min(980px, 100%); border: 1px solid var(--line); background: var(--glass); box-shadow: 0 30px 90px rgba(0,0,0,.45); backdrop-filter: blur(18px); }
-.select-panel { padding: clamp(18px, 3vw, 34px); }
+.select-panel { padding: clamp(18px, 3vw, 34px); max-height: 100%; overflow-y: auto; touch-action: pan-y; }
+.hero-kit, .game-guide { color: var(--muted); font-size: 11px; line-height: 1.45; margin: 8px 0; }
+.hero-kit { color: #e1d5a5; min-height: 16px; }
+.game-guide { border-top: 1px solid var(--line); padding-top: 8px; }
 .select-panel header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .select-panel h2, .result-panel h2 { margin-bottom: 0; font-size: clamp(26px, 4vw, 44px); letter-spacing: -.05em; }
 .chip { min-height: 38px; padding: 0 14px; border: 1px solid var(--line); border-radius: 99px; background: rgba(255,255,255,.06); font-size: 11px; font-weight: 800; letter-spacing: .08em; }

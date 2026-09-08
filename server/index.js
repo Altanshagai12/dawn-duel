@@ -52,11 +52,13 @@ export function onInput(room, player, input) {
 
 export function tick(room, dt) {
   const world = room.state.world;
+  if (world.ended) return;
   stepWorld(world, dt);
-  if (world.snapshotTick % 2 === 0 || world.phase !== 'playing' || world.paused) sendSnapshots(room);
-  if (world.phase === 'finished' && !world.ended) {
+  if (world.phase === 'finished') {
     world.ended = true;
     sendSnapshots(room);
     room.end({ winnerTeam: world.winnerTeam, reason: world.finishReason });
+    return;
   }
+  if (world.snapshotTick % 2 === 0 || world.phase !== 'playing' || world.paused) sendSnapshots(room);
 }

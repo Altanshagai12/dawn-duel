@@ -5,7 +5,7 @@ import {
   playerDisplayName, predictionSpeed, shouldRecreateEntityView, structureBlocks,
 } from '../src/game/EntityViews.js';
 import { PLAYER } from '../server/config.js';
-import { needsLandscapeGate, requestLandscapeLock } from '../src/ui/orientation.js';
+import { requestLandscapeLock } from '../src/ui/orientation.js';
 
 test('portrait phones are never faked by rotating only the game root', () => {
   const css = readFileSync(new URL('../styles/responsive.css', import.meta.url), 'utf8');
@@ -23,14 +23,13 @@ test('standalone hosts request real landscape orientation when supported', async
   assert.equal(await requestLandscapeLock({ orientation: { lock: async () => { throw new Error('denied'); } } }), false);
 });
 
-test('phone portrait is gated while true landscape and desktop portrait remain playable', () => {
-  assert.equal(needsLandscapeGate({ innerWidth: 390, innerHeight: 844 }), true);
-  assert.equal(needsLandscapeGate({ innerWidth: 844, innerHeight: 390 }), false);
-  assert.equal(needsLandscapeGate({ innerWidth: 900, innerHeight: 1200 }), false);
+test('the game never asks the player to rotate after the native host owns orientation', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../styles/base.css', import.meta.url), 'utf8');
-  assert.match(html, /id="orientation-screen"/);
-  assert.match(css, /html\.needs-landscape #orientation-screen/);
+  const copy = readFileSync(new URL('../src/ui/i18n.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(html, /orientation-screen/);
+  assert.doesNotMatch(css, /needs-landscape|orientation-screen/);
+  assert.doesNotMatch(copy, /ROTATE YOUR PHONE|УТСАА ХЭВТЭЭ БОЛГОНО УУ/);
 });
 
 test('overhead labels use the verified Usion display name, never hero or player ids', () => {
@@ -80,6 +79,6 @@ test('the client contains no standalone buff shrine renderer or HUD copy', () =>
 
 test('production loads one versioned client bundle so stale modules cannot mix', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  assert.match(html, /<script type="module" src="\.\/app\.v3\.js"><\/script>/);
+  assert.match(html, /<script type="module" src="\.\/app\.v4\.js"><\/script>/);
   assert.doesNotMatch(html, /src="\.\/src\/main\.js"/);
 });

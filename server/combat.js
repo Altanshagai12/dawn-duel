@@ -1,6 +1,6 @@
 import { CAMPS, MAP, MATCH, MINIONS, PLAYER, STRUCTURES } from './config.js';
 import { addEffect } from './effects.js';
-import { isBattlefieldWalkable } from './geometry.js';
+import { traceWalkableMove } from './geometry.js';
 import { clamp, distanceSquared, normalize, round } from './math.js';
 import { awardXp, heroKillXp, offerRelic } from './progression.js';
 import { resetPlayerAtFountain } from './world.js';
@@ -28,9 +28,11 @@ function towerForTeam(world, team) {
   return team === 0 ? world.structures.blueTower : world.structures.redTower;
 }
 
-function damageStructure(world, target, amount, damageClass, sourceId) {
+function damageStructure(world, target, amount, damageClass, sourceId, origin) {
   const sourceTeam = entityTeam(world, sourceId);
   if (sourceTeam === null || sourceTeam === target.team) return 0;
+  const attacker = origin || findEntity(world, sourceId);
+  if (!attacker || distanceSquared(attacker, target) > STRUCTURES[target.kind].range ** 2) return 0;
   if (target.kind === 'core' && towerForTeam(world, target.team).hp > 0) return 0;
   let adjusted = amount;
   const source = world.players[sourceId];
@@ -44,7 +46,8 @@ function damageStructure(world, target, amount, damageClass, sourceId) {
   target.hp = Math.max(0, target.hp - dealt);
   if (target.hp === 0 && target.kind === 'core') {
     world.phase = 'finished';
-    world.winnerTeam = sourceTeam;
+    const ownCore = sourceTeam === 0 ? world.structures.blueCore : world.structures.redCore;
+    world.winnerTeam = ownCore.hp <= 0 ? null : sourceTeam;
     world.finishReason = 'core';
   }
   return dealt;
@@ -62,7 +65,7 @@ function damagePlayer(world, target, amount, damageClass, sourceId) {
   target.shield = Math.max(0, target.shield - absorbed);
   if (absorbed > 0 && target.shield <= 0) {
     target.shieldSource = null;
-    if (shieldSource === 'crystal') target.crystalReadyAt = world.matchTime + 8;
+    if (shieldSource === 'crystal' || shieldSource === 'aegis') target.crystalReadyAt = world.matchTime + 8;
     if (shieldSource === 'warden') target.wardenReadyAt = world.matchTime + 8;
   }
   const dealt = adjusted - absorbed;
@@ -155,20 +158,21 @@ function pushTarget(world, target, sourceId, distance) {
   const direction = normalize(target.x - source.x, target.y - source.y);
   const x = clamp(target.x + direction.x * distance, target.radius, MAP.width - target.radius);
   const y = clamp(target.y + direction.y * distance, target.radius, MAP.height - target.radius);
-  if (isBattlefieldWalkable({ x, y }, target.radius)) {
-    target.x = x;
-    target.y = y;
-  }
+  const resolved = traceWalkableMove(target, { x, y }, target.radius,
+    point => Object.values(world.structures).some(structure => structure.hp > 0
+      && distanceSquared(point, structure) < (target.radius + structure.radius) ** 2));
+  target.x = resolved.x;
+  target.y = resolved.y;
   target.displaceImmuneUntil = world.matchTime + 0.4;
 }
 
-export function applyDamage(world, target, amount, damageClass, sourceId, status = {}) {
-  if (!target || target.hp <= 0 || amount <= 0) return 0;
+export function applyDamage(world, target, amount, damageClass, sourceId, status = {}, origin) {
+  if (!target || target.hp <= 0 || !Number.isFinite(amount) || amount <= 0) return 0;
   const impact = { x: target.x, y: target.y };
   const deathsBefore = target.kind === 'player' ? target.deaths : 0;
   let dealt = 0;
   if (target.kind === 'player') dealt = damagePlayer(world, target, amount, damageClass, sourceId);
-  else if (target.kind === 'tower' || target.kind === 'core') dealt = damageStructure(world, target, amount, damageClass, sourceId);
+  else if (target.kind === 'tower' || target.kind === 'core') dealt = damageStructure(world, target, amount, damageClass, sourceId, origin);
   else {
     dealt = Math.max(0.01, round(amount, 100));
     target.hp = Math.max(0, target.hp - dealt);
@@ -195,12 +199,10 @@ export function applyDamage(world, target, amount, damageClass, sourceId, status
     const until = world.matchTime + Math.min(2, status.burnSeconds || 0);
     if (!target.burn) {
       target.burn = { sourceId, dps, damageClass: status.burnClass || 'skill', until, nextAt: world.matchTime + 0.25 };
-    } else {
-      if (dps >= target.burn.dps) {
-        target.burn.sourceId = sourceId;
-        target.burn.damageClass = status.burnClass || 'skill';
-      }
-      target.burn.dps = Math.max(target.burn.dps, dps);
+    } else if (dps >= target.burn.dps) {
+      target.burn.sourceId = sourceId;
+      target.burn.damageClass = status.burnClass || 'skill';
+      target.burn.dps = dps;
       target.burn.until = Math.max(target.burn.until, until);
     }
   }

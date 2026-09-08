@@ -1,7 +1,17 @@
 export const copy = {
   mn: {
+    guide: '1500 HP · Цэргүүдтэйгээ tower → цөмийг нураа. Цэрэг, баатар, босс устгаж XP авна. Нэг талын 2 боссыг унагавал 45s relic сонгоно.',
+    practiceRule: 'Баатар сонгомогц 3 секундийн дараа бэлтгэл эхэлнэ',
+    move: 'ХӨДӨЛ', fire: 'БУУД', skillGuide: 'Skill: чирж онилоод тавь', core: 'ЦӨМ', nextWave: 'ДАВАЛГАА', bossPair: 'БОСС',
+    exit: 'ТОГЛООМООС ГАРАХ', networkResult: 'Тулаан дууслаа. Usion руу буцаж шинэ тоглолт нээгээрэй.',
+    finishReasons: { core: 'Дайсны цөм нурсан', forfeit: 'Өрсөлдөгч холболтоо сэргээгээгүй', abandoned: 'Тоглогчид гарсан', dawnfall: 'Dawnfall дууссан', time: 'Цаг дууссан' },
+    skillDetails: {
+      shana: ['Q: 170 гэмтэл, 2.5s илчилнэ · 9s', 'E: 3×55 сум, 15% удаашруулна · 11s'],
+      diamond: ['Q: 4s турш 160 бамбай · 12s', 'E: 90 гэмтэл, түлхэнэ, 20% удаашруулна · 10s'],
+      scarlett: ['Q: 140 + 2s шаталт, 3 бай нэвтэлнэ · 11s', 'E: 6s дотор 3 сум +15 гэмтэл, 10% удаашрал · 12s'],
+      hina: ['Q: 120 зайд dash + 3s бууддаг хуулбар · 8s', 'E: 170 гэмтэл, 1.3s турш 25% удаашрал · 11s'],
+    },
     boot: 'Тулааны талбарыг бэлдэж байна…', choose: 'Баатраа сонго', waiting: 'Өрсөлдөгч хүлээж байна',
-    rotateTitle: 'УТСАА ХЭВТЭЭ БОЛГОНО УУ', rotateCopy: 'Тулаан зөвхөн өргөн landscape дэлгэцээр тоглогдоно.',
     selected: 'Сонголоо · тулаан удахгүй эхэлнэ', you: 'ТА', rival: 'ӨРСӨЛДӨГЧ', solo: 'BOT БЭЛТГЭЛ', live: 'ШУУД',
     roomConnected: 'ӨРӨӨНД ХОЛБОГДСОН', roomConnecting: 'ӨРӨӨНД ХОЛБОЖ БАЙНА', pick: 'СОНГОНО', picked: 'СОНГОСОН', ready: 'БЭЛЭН', notJoined: 'ОРООГҮЙ', host: 'HOST',
     inviteWait: 'Таны сонголт баталгаажлаа · найз invite дээр дарж орохыг хүлээж байна',
@@ -29,15 +39,25 @@ export const copy = {
     },
     upgrades: {
       edge: ['Ирмэг', '+5% basic damage'], vitality: ['Амь', '+75 max HP'], arcana: ['Аркан', '+6% skill damage'],
-      guard: ['Хуяг', '-4% basic damage'], ward: ['Сахиус', '-4% skill damage'], swift: ['Хурд', '+3% хөдөлгөөн'], haste: ['Хэмнэл', '-4% cooldown'],
+      guard: ['Хуяг', 'Авах basic гэмтэл −4%'], ward: ['Сахиус', 'Авах skill гэмтэл −4%'], swift: ['Хурд', '+3% хөдөлгөөн'], haste: ['Хэмнэл', 'Skill хүлээлт −4%'],
     },
     relics: {
-      scout: ['Scout', '+20% харааны хүрээ'], raider: ['Raider', '+15% structure damage'], warden: ['Warden', 'Өөрийн талд 120 shield'],
+      scout: ['Scout', '45s · +20% баатрын хараа'], raider: ['Raider', '45s · +15% tower гэмтэл'], warden: ['Warden', '45s · өөрийн талд 120 бамбай'],
     },
   },
   en: {
+    guide: '1500 HP · Escort minions: tower → core. Kills earn XP and upgrades. Defeat both bosses on one half to choose a 45s relic.',
+    practiceRule: 'Picking a hero starts practice after a 3-second countdown',
+    move: 'MOVE', fire: 'FIRE', skillGuide: 'Skills: drag to aim, release', core: 'CORE', nextWave: 'WAVE IN', bossPair: 'BOSSES',
+    exit: 'EXIT GAME', networkResult: 'Match complete. Return to Usion to open a new duel.',
+    finishReasons: { core: 'Enemy core destroyed', forfeit: 'Opponent did not reconnect', abandoned: 'Players left', dawnfall: 'Dawnfall resolved', time: 'Time limit reached' },
+    skillDetails: {
+      shana: ['Q: 170 damage, 2.5s reveal · 9s cooldown', 'E: 3×55 bolts, 15% slow · 11s cooldown'],
+      diamond: ['Q: 160 shield for 4s · 12s cooldown', 'E: 90 damage, knockback, 20% slow · 10s cooldown'],
+      scarlett: ['Q: 140 + 2s burn, pierces 3 targets · 11s', 'E: 3 shots +15 damage, 10% slow within 6s · 12s'],
+      hina: ['Q: 120-unit dash + 3s firing clone · 8s', 'E: 170 damage, 25% slow for 1.3s · 11s'],
+    },
     boot: 'Preparing the battleground…', choose: 'Choose your hero', waiting: 'Waiting for rival',
-    rotateTitle: 'ROTATE YOUR PHONE', rotateCopy: 'Battle is available only in a wide landscape view.',
     selected: 'Locked in · battle begins soon', you: 'YOU', rival: 'RIVAL', solo: 'BOT PRACTICE', live: 'LIVE',
     roomConnected: 'ROOM CONNECTED', roomConnecting: 'CONNECTING TO ROOM', pick: 'PICKING', picked: 'LOCKED', ready: 'READY', notJoined: 'NOT JOINED', host: 'HOST',
     inviteWait: 'Locked in · waiting for your friend to open the invite',
@@ -64,10 +84,10 @@ export const copy = {
     },
     upgrades: {
       edge: ['Edge', '+5% basic damage'], vitality: ['Vitality', '+75 max HP'], arcana: ['Arcana', '+6% skill damage'],
-      guard: ['Guard', '-4% basic damage'], ward: ['Ward', '-4% skill damage'], swift: ['Swift', '+3% move speed'], haste: ['Haste', '-4% cooldown'],
+      guard: ['Guard', '−4% basic damage taken'], ward: ['Ward', '−4% skill damage taken'], swift: ['Swift', '+3% move speed'], haste: ['Haste', '−4% skill cooldown'],
     },
     relics: {
-      scout: ['Scout', '+20% shared vision'], raider: ['Raider', '+15% structure damage'], warden: ['Warden', '120 shield on your half'],
+      scout: ['Scout', '45s · +20% hero vision'], raider: ['Raider', '45s · +15% structure damage'], warden: ['Warden', '45s · 120 shield on your half'],
     },
   },
 };

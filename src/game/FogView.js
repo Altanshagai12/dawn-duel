@@ -5,7 +5,7 @@ export class FogView {
     this.scene = scene;
     this.cover = scene.make.graphics({ add: false });
     this.holes = scene.make.graphics({ add: false });
-    this.texture = scene.add.renderTexture(0, 0, MAP.width, MAP.height).setOrigin(0).setDepth(800);
+    this.texture = scene.add.renderTexture(0, 0, MAP.width, MAP.height).setOrigin(0).setDepth(FOG_DEPTH);
   }
 
   draw(sources = []) {
@@ -17,3 +17,6 @@ export class FogView {
     this.texture.erase(this.holes);
   }
 }
+
+// All y-sorted entities and fixed-depth combat effects must remain below fog.
+export const FOG_DEPTH = MAP.height + 2000;

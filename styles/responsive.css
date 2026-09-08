@@ -51,17 +51,31 @@
   .choice-tray { padding: 7px; }
   .choice-tray > p { margin-bottom: 4px; }
   .choice-tray > div { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
-  .choice-tray button.option { min-width: 0; min-height: 42px; padding: 4px; grid-template-columns: 24px minmax(0, 1fr); gap: 4px; }
+  .choice-tray button.option { min-width: 0; min-height: 52px; padding: 5px; gap: 2px; }
   .choice-tray button.option > i { width: 24px; height: 24px; }
-  .choice-tray button.option strong { overflow: hidden; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
-  .choice-tray button.option small { display: none; }
+  .choice-tray button.option strong { font-size: 10px; line-height: 1.2; }
+  .choice-tray button.option small { display: block; font-size: 9px; line-height: 1.2; }
   .choice-tray .chip { min-height: 22px; margin-top: 4px; padding: 4px 7px; }
 }
 
 @media (orientation: landscape) and (max-height: 520px) {
+  .screen { padding: 10px max(14px, var(--safe-right)) 10px max(14px, var(--safe-left)); }
+  .select-panel { padding: 12px 18px; }
+  .select-panel h2 { font-size: 26px; }
+  .hero-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 10px 0; max-height: none; overflow: visible; }
+  .hero-card { min-height: 122px; }
+  .hero-card img { height: 102px; }
+  .hero-card div { inset: auto 9px 8px; }
+  .hero-card strong { font-size: 15px; }
+  .hero-card small { font-size: 7px; margin-top: 3px; }
+  .hero-kit, .game-guide { font-size: 10px; margin: 5px 0; }
+  .draft-meta { flex-direction: row; margin-top: 8px; }
+  .draft-actions { margin-top: 5px; }
+  .select-status { margin-bottom: 4px; font-size: 11px; }
   .topbar { top: max(5px, var(--safe-top)); transform: translateX(-50%) scale(.78); transform-origin: top center; }
   .network { top: max(52px, calc(var(--safe-top) + 48px)); left: max(8px, var(--safe-left)); padding: 5px 7px; }
   #minimap { top: max(78px, calc(var(--safe-top) + 74px)); left: max(8px, var(--safe-left)); width: clamp(112px, 16vw, 146px); height: auto; aspect-ratio: 16 / 9; }
+  .objective-status { top: max(166px, calc(var(--safe-top) + 162px)); left: max(8px, var(--safe-left)); }
   .stick, .stick--aim { width: 102px; height: 102px; }
   .stick { left: max(18px, var(--safe-left)); bottom: max(17px, var(--safe-bottom)); }
   .action-cluster { right: max(15px, var(--safe-right)); bottom: max(14px, var(--safe-bottom)); width: 204px; height: 132px; }
@@ -70,7 +84,7 @@
   #skill-1 { left: 20px; bottom: 61px; }
   #skill-2 { left: 4px; bottom: 0; }
   .player-bars { bottom: max(8px, var(--safe-bottom)); width: min(244px, 32vw); padding: 7px 9px; }
-  .choice-stack { top: max(64px, calc(var(--safe-top) + 60px)); right: max(8px, var(--safe-right)); width: min(330px, 39vw); }
+  .choice-stack { top: max(64px, calc(var(--safe-top) + 60px)); right: max(8px, var(--safe-right)); width: min(330px, 39vw); max-height: calc(100vh - 206px); overflow-y: auto; touch-action: pan-y; }
   .announcement { top: 19%; font-size: 11px; }
 }
 

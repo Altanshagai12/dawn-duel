@@ -175,3 +175,35 @@ test('a low-health bot reaches its fountain, heals, then rejoins the lane', () =
   assert.equal(reachedFountain, true);
   assert.equal(rejoined, true);
 });
+
+test('contested boss trades preserve full state after swapping Diamond and Hina sides', () => {
+  const matches = [['diamond', 'hina'], ['hina', 'diamond']].map(heroes => {
+    const world = createWorld(20260904);
+    addPlayer(world, 'blue'); addPlayer(world, 'red');
+    world.playerOrder.forEach((id, index) => applyCommand(world, id, 'select_hero', { hero: heroes[index] }));
+    world.phase = 'playing';
+    return { world, memory: { blue: {}, red: {} } };
+  });
+  for (let tick = 0; tick < 18000; tick += 1) {
+    for (const match of matches) {
+      if (tick % 3 === 0) for (const id of match.world.playerOrder) {
+        match.memory[id] = updateBot(match.world, id, match.memory[id]);
+      }
+      stepWorld(match.world, 1 / 30);
+    }
+    for (const [firstId, secondId] of [['blue', 'red'], ['red', 'blue']]) {
+      const first = matches[0].world.players[firstId];
+      const second = matches[1].world.players[secondId];
+      assert.ok(Math.abs(first.x + second.x - MAP.width) < .001, `x divergence at tick ${tick}`);
+      assert.ok(Math.abs(first.y + second.y - MAP.height) < .001, `y divergence at tick ${tick}`);
+      for (const stat of ['hp', 'shield', 'xp', 'kills', 'guardianKills']) {
+        assert.equal(first[stat], second[stat], `${stat} divergence at tick ${tick}`);
+      }
+    }
+    if (matches.every(match => match.world.phase === 'finished')) break;
+  }
+  assert.equal(matches[0].world.phase, 'finished');
+  assert.equal(matches[1].world.phase, 'finished');
+  const reverseWinner = matches[1].world.winnerTeam;
+  assert.equal(matches[0].world.winnerTeam, reverseWinner === null ? null : 1 - reverseWinner);
+});

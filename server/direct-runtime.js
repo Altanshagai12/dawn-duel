@@ -7,7 +7,7 @@ import { ResultOutbox } from './result-outbox.js';
 import { createResultPayload } from './result-submit.js';
 
 const EMPTY_ROOM_TTL_MS = 120_000;
-const FINISHED_ROOM_TTL_MS = 30_000;
+export const FINISHED_ROOM_TTL_MS = 30_000;
 const SOCKET_IDLE_MS = 70_000;
 const MAX_CONNECTIONS = 256;
 
@@ -94,6 +94,7 @@ export function createDirectRuntime(options) {
     if (!room || !member || member.socket !== session.socket) return;
     member.socket = null;
     member.connected = false;
+    if (room.ended) return;
     onLeave(room.facade, { id: member.id, name: member.name, hostId: room.hostId });
     broadcast(room, 'player_left', {
       room_id: room.id,
@@ -108,6 +109,10 @@ export function createDirectRuntime(options) {
     let room = rooms.get(identity.roomId);
     room ||= createRoom(identity);
     let member = room.members.get(identity.id);
+    if (room.ended && !member) {
+      rejectSocket(session.socket, 'ROOM_FINISHED', 'This match is complete');
+      return;
+    }
     if (!member && room.members.size >= config.maxPlayers) {
       rejectSocket(session.socket, 'ROOM_FULL', 'Room already has two players');
       return;
@@ -159,6 +164,12 @@ export function createDirectRuntime(options) {
       hostId: room.hostId,
       replaceHost,
     });
+    if (room.ended) {
+      sendFrame(session.socket, 'match_end', {
+        winnerTeam: room.state.world.winnerTeam, reason: room.state.world.finishReason,
+      });
+      return;
+    }
     broadcast(room, 'player_joined', {
       room_id: room.id,
       player_id: identity.id,
@@ -256,10 +267,22 @@ export function createDirectRuntime(options) {
   function update() {
     const now = Date.now();
     for (const room of rooms.values()) {
-      try { tick(room.facade, 1 / config.tickHz); }
-      catch (error) { console.error('[dawn-duel] room tick failed', room.id, error); }
+      if (!room.ended) {
+        try { tick(room.facade, 1 / config.tickHz); }
+        catch (error) { console.error('[dawn-duel] room tick failed', room.id, error); }
+      }
       const emptyFor = room.emptyAt ? now - room.emptyAt : 0;
-      if (room.ended && !outbox.hasRoom(room.id) && emptyFor >= FINISHED_ROOM_TTL_MS) rooms.delete(room.id);
+      if (room.ended && now - room.endedAt >= FINISHED_ROOM_TTL_MS) {
+        // Result jobs own their payload and retry independently of the live
+        // simulation. A connected results screen must not retain a room.
+        rooms.delete(room.id);
+        for (const session of authenticated.values()) {
+          if (session.identity.roomId !== room.id) continue;
+          session.socket.close(1000, 'Match complete');
+          const closing = setTimeout(() => session.socket.terminate(), 1000);
+          closing.unref?.();
+        }
+      }
       else if (!room.ended && room.emptyAt && emptyFor >= EMPTY_ROOM_TTL_MS) rooms.delete(room.id);
     }
     outbox.pump(now);
@@ -277,7 +300,7 @@ export function createDirectRuntime(options) {
 
   return {
     rooms,
-    listen(callback) { http.listen(options.port, callback); },
+    listen(callback) { http.listen(options.port, () => callback?.(http.address())); },
     async close() {
       clearInterval(timer);
       for (const socket of sockets.clients) socket.close(1001, 'Server shutting down');

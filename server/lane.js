@@ -1,7 +1,7 @@
 import { MAP, MINIONS, STRUCTURES } from './config.js';
 import { applyDamage, findEntity } from './combat.js';
 import { addEffect } from './effects.js';
-import { formationPoint, lanePoint, laneProgress } from './geometry.js';
+import { formationPoint, laneOffset, lanePoint, laneProgress, resolveWalkableMove, traceWalkableMove } from './geometry.js';
 import { distanceSquared, normalize, roundAround, stableSortByDistance } from './math.js';
 
 const LANE_OFFSETS = [-46, -22, 0, 22, 46];
@@ -62,27 +62,43 @@ function enemyStructure(world, team) {
 
 function minionTarget(world, minion) {
   const radius2 = MINIONS.aggroRadius ** 2;
+  const reachable = target => distanceSquared(target, minion) <= radius2
+    && Math.abs(laneOffset(target)) <= MAP.laneWidth / 2 - minion.radius
+    && !traceWalkableMove(minion, target).blocked;
   const enemyMinions = world.minions.filter(other => other.team !== minion.team
-    && other.hp > 0 && distanceSquared(other, minion) <= radius2);
+    && other.hp > 0 && reachable(other));
   if (enemyMinions.length) return stableSortByDistance(enemyMinions, minion)[0];
   const enemyHeroes = Object.values(world.players).filter(player => player.team !== minion.team
-    && player.spiritUntil <= world.matchTime && distanceSquared(player, minion) <= radius2);
+    && player.hp > 0 && player.spiritUntil <= world.matchTime && reachable(player));
   if (enemyHeroes.length) return stableSortByDistance(enemyHeroes, minion)[0];
   return enemyStructure(world, minion.team);
 }
 
-function movementToward(entity, target, speed, dt) {
-  const direction = normalize(target.x - entity.x, target.y - entity.y);
+function movementToward(world, entity, target, speed, dt) {
+  const progress = laneProgress(entity);
+  const travel = laneProgress(target) >= progress ? 1 : -1;
+  const obstruction = Object.values(world.structures).find(structure => {
+    const ahead = (laneProgress(structure) - progress) * travel;
+    return structure.hp > 0 && structure.id !== target.id && ahead > -85 && ahead < 180;
+  });
+  const side = Math.sign(entity.laneOffset) || (entity.team === 0 ? -1 : 1);
+  const waypoint = obstruction
+    ? lanePoint(laneProgress(obstruction) + travel * 110, side * (obstruction.radius + entity.radius + 26))
+    : target;
+  const direction = normalize(waypoint.x - entity.x, waypoint.y - entity.y);
   const raw = {
     x: entity.x + direction.x * speed * dt,
     y: entity.y + direction.y * speed * dt,
   };
   const anchor = lanePoint(laneProgress(raw), entity.laneOffset);
-  const pull = Math.min(1, dt * 1.8);
-  return {
+  const pull = obstruction ? 0 : Math.min(1, dt * 1.8);
+  const desired = {
     x: roundAround(raw.x + (anchor.x - raw.x) * pull, MAP.width / 2),
     y: roundAround(raw.y + (anchor.y - raw.y) * pull, MAP.height / 2),
   };
+  const blocked = point => Object.values(world.structures).some(structure => structure.hp > 0
+    && distanceSquared(point, structure) < (entity.radius + structure.radius) ** 2);
+  return resolveWalkableMove(entity, desired, entity.radius, blocked);
 }
 
 export function updateMinions(world, dt) {
@@ -101,13 +117,13 @@ export function updateMinions(world, dt) {
     const range = target.kind === 'tower' || target.kind === 'core'
       ? Math.min(naturalRange, STRUCTURES[target.kind].range)
       : naturalRange;
-    if (distanceSquared(minion, target) <= range * range) {
+    if (distanceSquared(minion, target) <= range * range && !traceWalkableMove(minion, target).blocked) {
       if (world.matchTime < minion.attackReadyAt) continue;
       minion.attackReadyAt = world.matchTime + config.cooldown;
       const amount = target.kind === 'player' && config.heroDamage ? config.heroDamage : config.damage;
       attacks.push({ minion, target, amount: amount * minion.damageScale });
     } else {
-      movements.push({ minion, position: movementToward(minion, target, config.speed, dt) });
+      movements.push({ minion, position: movementToward(world, minion, target, config.speed, dt) });
     }
   }
   for (const { minion, position } of movements) Object.assign(minion, position);
@@ -121,12 +137,14 @@ export function updateMinions(world, dt) {
 function validStructureTargets(world, structure) {
   const radius2 = STRUCTURES[structure.kind].range ** 2;
   const heroes = Object.values(world.players).filter(player => player.team !== structure.team
-    && player.spiritUntil <= world.matchTime && distanceSquared(player, structure) <= radius2);
+    && player.hp > 0 && player.spiritUntil <= world.matchTime && distanceSquared(player, structure) <= radius2
+    && !traceWalkableMove(structure, player).blocked);
   const retaliation = heroes.filter(player => player.towerAggroTeam === structure.team
     && player.towerAggroUntil > world.matchTime);
   if (retaliation.length) return stableSortByDistance(retaliation, structure);
   const minions = world.minions.filter(minion => minion.team !== structure.team
-    && minion.hp > 0 && distanceSquared(minion, structure) <= radius2);
+    && minion.hp > 0 && distanceSquared(minion, structure) <= radius2
+    && !traceWalkableMove(structure, minion).blocked);
   if (minions.length) return stableSortByDistance(minions, structure);
   return stableSortByDistance(heroes, structure);
 }

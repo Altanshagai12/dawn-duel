@@ -2,7 +2,8 @@ import { EntityViews } from './EntityViews.js';
 import { FogView } from './FogView.js';
 import { cameraZoomForDisplay, displayMetricsForElement } from './display.js';
 import { MAP } from '../../server/config.js';
-import { campGeometry } from '../../server/geometry.js';
+import { createTerrain } from './TerrainView.js';
+import { AimView } from './AimView.js';
 
 const SHEETS = {
   shana: [181, 181, './assets/heroes/shana.webp'],
@@ -20,8 +21,9 @@ export class GameScene extends Phaser.Scene {
   constructor(bridge) { super('DawnDuel'); this.bridge = bridge; this.latest = null; }
 
   preload() {
+    this.load.image('flagstone', './assets/map/flagstone-material.png');
+    this.load.image('forest', './assets/map/forest-material.png');
     this.load.on('loaderror', file => console.error('[dawn-duel]', { event: 'asset_load_failed', key: file?.key, url: file?.url }));
-    this.load.image('battlefield', './assets/map/dawnfall-lane-v3.png');
     this.load.image('tower', './assets/structures/tower.webp');
     this.load.image('core', './assets/structures/core.webp');
     this.load.image('arcBolt', './assets/effects/arc-bolt.webp');
@@ -34,49 +36,14 @@ export class GameScene extends Phaser.Scene {
     const frames = Object.keys(SHEETS).map(key => `${key}:${this.textures.get(key).frameTotal}`).join(',');
     console.info(`[dawn-duel] scene_ready textures=${this.textures.getTextureKeys().join(',')} frames=${frames}`);
     this.cameras.main.setBounds(0, 0, MAP.width, MAP.height).setBackgroundColor('#071010');
-    this.add.image(MAP.width / 2, MAP.height / 2, 'battlefield')
-      .setDisplaySize(MAP.width, MAP.height).setDepth(-20);
-    this.drawMap();
+    createTerrain(this);
     this.views = new EntityViews(this, () => this.bridge.input?.());
     this.fog = new FogView(this);
+    this.aimView = new AimView(this);
     this.setDisplay(this.bridge.getDisplay());
     this.bindPointer();
     this.bridge.ready(this);
     if (this.latest) this.applySnapshot(this.latest);
-  }
-
-  drawMap() {
-    const g = this.add.graphics().setDepth(-10);
-    for (const site of MAP.campSites) {
-      const geometry = campGeometry(site);
-      const color = site.side ? 0xff747b : 0x5de6df;
-      const drawRoute = (width, stroke, alpha) => {
-        g.lineStyle(width, stroke, alpha).beginPath();
-        geometry.route.forEach((point, index) => {
-          if (index === 0) g.moveTo(point.x, point.y);
-          else g.lineTo(point.x, point.y);
-        });
-        g.strokePath();
-      };
-      drawRoute(geometry.pathRadius * 2 + 14, 0x061313, .68);
-      drawRoute(geometry.pathRadius * 2, color, .13);
-      g.fillStyle(0x071414, .28).fillCircle(site.x, site.y, geometry.pocketRadius + 8);
-      g.fillStyle(color, .13).fillCircle(site.x, site.y, geometry.pocketRadius);
-      g.lineStyle(7, 0x071414, .82).beginPath()
-        .arc(site.x, site.y, geometry.pocketRadius + 4, geometry.angle + geometry.halfGap, geometry.angle + Math.PI * 2 - geometry.halfGap)
-        .strokePath();
-      g.lineStyle(3, color, .56).beginPath()
-        .arc(site.x, site.y, geometry.pocketRadius, geometry.angle + geometry.halfGap, geometry.angle + Math.PI * 2 - geometry.halfGap)
-        .strokePath();
-    }
-    g.lineStyle(MAP.laneWidth + 16, 0x061313, .48)
-      .lineBetween(MAP.blueCoreX, MAP.blueCoreY, MAP.redCoreX, MAP.redCoreY);
-    g.lineStyle(MAP.laneWidth, 0x9ec6a5, .12)
-      .lineBetween(MAP.blueCoreX, MAP.blueCoreY, MAP.redCoreX, MAP.redCoreY);
-    g.lineStyle(4, 0xe8c879, .22)
-      .lineBetween(MAP.blueCoreX, MAP.blueCoreY, MAP.redCoreX, MAP.redCoreY);
-    g.fillStyle(0x5de6df, .08).fillCircle(MAP.blueCoreX, MAP.blueCoreY, 150);
-    g.fillStyle(0xff747b, .08).fillCircle(MAP.redCoreX, MAP.redCoreY, 150);
   }
 
   bindPointer() {
@@ -108,7 +75,15 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  update(time, delta) { this.views?.update(time, delta); }
+  reset() {
+    this.latest = null; this.cameras.main.stopFollow();
+    this.views?.reset(); this.fog?.draw([]); this.aimView?.graphic.clear();
+  }
+
+  update(time, delta) {
+    this.views?.update(time, Math.min(50, delta));
+    this.aimView?.update(this.views?.items.get(this.latest?.you), this.bridge.input?.(), this.bridge.preview?.());
+  }
 }
 
 export function createGameBridge() {
@@ -120,6 +95,7 @@ export function createGameBridge() {
   const bridge = {
     ready(value) { scene = value; scene.setDisplay(display); readyResolve(value); },
     apply(snapshot) { pending = snapshot; scene?.applySnapshot(snapshot); },
+    reset() { pending = null; scene?.reset(); },
     setDisplay(value) { display = value; scene?.setDisplay(value); },
     getDisplay: () => display,
     aim() {}, attack() {},

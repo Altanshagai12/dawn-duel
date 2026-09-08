@@ -8,6 +8,7 @@ export class DevSession {
     this.socket = new WebSocket(`${this.access.wsUrl}?token=${encodeURIComponent(this.access.token)}`);
     this.socket.addEventListener('open', () => this.sendFrame('join', {}));
     this.socket.addEventListener('close', () => {
+      this.connected = false;
       this.status('poor');
       if (this.rejectConnection) this.rejectConnection(new Error('Local multiplayer connection closed'));
       this.rejectConnection = null;
@@ -15,6 +16,7 @@ export class DevSession {
     this.socket.addEventListener('message', event => {
       const frame = JSON.parse(event.data);
       if (frame.type === 'joined') {
+        this.connected = true;
         this.status('ready'); this.resolveConnection?.();
         this.resolveConnection = null; this.rejectConnection = null;
       }

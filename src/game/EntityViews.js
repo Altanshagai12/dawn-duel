@@ -18,7 +18,7 @@ export function structureBlocks(structures, point, radius) {
 }
 
 export function shouldRecreateEntityView(previous, next) {
-  return (next.kind === 'player' || next.kind === 'clone') && previous.hero !== next.hero;
+  return previous.team !== next.team || ((next.kind === 'player' || next.kind === 'clone') && previous.hero !== next.hero);
 }
 
 export function predictionSpeed(player, now) {
@@ -43,6 +43,13 @@ export class EntityViews {
     this.structures = [];
   }
 
+  reset() {
+    for (const view of this.items.values()) view.root.destroy(true);
+    this.items.clear(); this.seenEffects.clear(); this.structures = [];
+  }
+
+  color(team) { return team === 0 || team === 1 ? COLORS[team === this.team ? 0 : 1] : 0xc4a4ff; }
+
   create(entity) {
     if (entity.kind === 'projectile') return this.createProjectile(entity);
     if (entity.kind === 'tower' || entity.kind === 'core') return this.createStructure(entity);
@@ -53,11 +60,10 @@ export class EntityViews {
     }
     const scale = entity.kind === 'player' || entity.kind === 'clone' ? HERO_SCALE[entity.hero] : entity.kind === 'camp' ? .5 : .3;
     const sprite = this.scene.add.sprite(0, 0, texture, 24).setScale(scale);
-    if (entity.team === 0) sprite.setTint(0xc5ffff);
-    if (entity.team === 1) sprite.setTint(0xffc5c8);
+    if (entity.team === 0 || entity.team === 1) sprite.setTint(entity.team === this.team ? 0xc5ffff : 0xffc5c8);
     if (entity.kind === 'clone') sprite.setAlpha(.55);
     const barBg = this.scene.add.rectangle(0, -42, 58, 5, 0x041010, .9).setOrigin(.5);
-    const bar = this.scene.add.rectangle(-29, -42, 58, 4, COLORS[entity.team] || 0xc4a4ff).setOrigin(0, .5);
+    const bar = this.scene.add.rectangle(-29, -42, 58, 4, this.color(entity.team)).setOrigin(0, .5);
     const label = entity.kind === 'player'
       ? this.scene.add.text(0, -55, playerDisplayName(entity), { fontFamily: 'system-ui', fontSize: '10px', color: '#effff8', stroke: '#061010', strokeThickness: 3 }).setOrigin(.5)
       : null;
@@ -67,7 +73,7 @@ export class EntityViews {
   }
 
   createProjectile(entity) {
-    const color = entity.projectileType?.includes('ember') || entity.projectileType === 'flame' ? 0xff7b45 : COLORS[entity.team];
+    const color = entity.projectileType?.includes('ember') || entity.projectileType === 'flame' ? 0xff7b45 : this.color(entity.team);
     const width = entity.projectileType === 'flame' ? 82 : entity.projectileType === 'precision' ? 92 : 60;
     const root = this.scene.add.image(entity.x, entity.y, 'arcBolt').setDisplaySize(width, width * .34)
       .setTint(color).setRotation(Math.atan2(entity.dy || 0, entity.dx || 1)).setDepth(600);
@@ -78,24 +84,27 @@ export class EntityViews {
   createStructure(entity) {
     const size = entity.kind === 'core' ? 118 : 88;
     const root = this.scene.add.container(entity.x, entity.y).setDepth(entity.y + 10);
-    const range = this.scene.add.circle(0, 0, STRUCTURES[entity.kind].range, COLORS[entity.team], .025)
-      .setStrokeStyle(2, COLORS[entity.team], .11);
-    const aura = this.scene.add.circle(0, -8, size * .66, COLORS[entity.team], .09)
-      .setStrokeStyle(3, COLORS[entity.team], .42);
+    const range = this.scene.add.circle(0, 0, STRUCTURES[entity.kind].range, this.color(entity.team), .025)
+      .setStrokeStyle(2, this.color(entity.team), .11);
+    const aura = this.scene.add.circle(0, -8, size * .66, this.color(entity.team), .09)
+      .setStrokeStyle(3, this.color(entity.team), .42);
     const sprite = this.scene.add.image(0, 0, entity.kind).setOrigin(.5, .73)
       .setDisplaySize(entity.kind === 'core' ? 190 : 118, entity.kind === 'core' ? 181 : 177)
-      .setTint(entity.team === 0 ? 0xc8ffff : 0xffc4ca);
+      .setTint(entity.team === this.team ? 0xc8ffff : 0xffc4ca);
     const barY = entity.kind === 'core' ? -142 : -136;
     const barBg = this.scene.add.rectangle(0, barY, size, 9, 0x020707, .94);
-    const bar = this.scene.add.rectangle(-size / 2, barY, size, 6, COLORS[entity.team], 1).setOrigin(0, .5);
+    const bar = this.scene.add.rectangle(-size / 2, barY, size, 6, this.color(entity.team), 1).setOrigin(0, .5);
     root.add([range, aura, sprite, barBg, bar]);
     this.scene.tweens.add({ targets: aura, alpha: .2, scale: 1.08, duration: 900, yoyo: true, repeat: -1 });
-    return { root, sprite, bar, entity, targetX: entity.x, targetY: entity.y, lastX: entity.x, lastY: entity.y };
+    return { root, sprite, bar, range, aura, entity, targetX: entity.x, targetY: entity.y, lastX: entity.x, lastY: entity.y };
   }
 
   apply(snapshot) {
+    if (this.team !== undefined && this.team !== snapshot.team) this.reset();
+    this.team = snapshot.team;
     this.localId = snapshot.you;
     this.snapshotNow = snapshot.now;
+    this.playing = snapshot.match.phase === 'playing' && !snapshot.match.paused;
     this.structures = Object.values(snapshot.structures);
     const entities = [
       ...Object.values(snapshot.players).filter(entity => Number.isFinite(entity.x) && entity.hero),
@@ -119,6 +128,14 @@ export class EntityViews {
         view.label?.setText(playerDisplayName(entity));
         view.root.setAlpha(entity.spiritUntil > snapshot.now ? .38 : 1);
       }
+      if (view.range) {
+        const you = snapshot.players[snapshot.you];
+        const hostile = entity.team !== snapshot.team;
+        const nearby = hostile && Math.hypot(you.x - entity.x, you.y - entity.y) < STRUCTURES[entity.kind].range + 100;
+        view.range.setVisible(entity.hp > 0).setStrokeStyle(nearby ? 3 : 2, hostile ? 0xff747b : 0x5de6df, nearby ? .65 : .16);
+        view.aura.setVisible(entity.hp > 0);
+        view.sprite.setAlpha(entity.hp > 0 ? 1 : .18);
+      }
     }
     for (const [id, view] of this.items) {
       if (alive.has(id)) continue;
@@ -135,7 +152,8 @@ export class EntityViews {
       const local = id === this.localId && view.entity.kind === 'player';
       let facingX = dx;
       let facingY = dy;
-      const correction = local ? (Math.hypot(dx, dy) > 65 ? .42 : .08) : .28;
+      const factor = local ? (Math.hypot(dx, dy) > 65 ? .42 : .08) : .28;
+      const correction = 1 - (1 - factor) ** (delta / (1000 / 60));
       const teleported = view.entity.kind === 'player' && Math.hypot(dx, dy) > 220;
       const radius = view.entity.radius || 21;
       const blocked = point => structureBlocks(this.structures, point, radius);
@@ -149,7 +167,7 @@ export class EntityViews {
         : { x: view.root.x + dx * correction, y: view.root.y + dy * correction };
       view.root.x = corrected.x;
       view.root.y = corrected.y;
-      if (local) {
+      if (local && this.playing) {
         const input = this.inputState?.();
         const magnitude = Math.min(1, Math.hypot(input?.moveX || 0, input?.moveY || 0));
         const scale = magnitude > 0 ? magnitude / Math.hypot(input.moveX, input.moveY) : 0;
@@ -187,12 +205,12 @@ export class EntityViews {
         const ring = this.scene.add.circle(effect.x, effect.y, effect.radius, 0xff594d, .12).setStrokeStyle(4, 0xff786e, .8).setDepth(550);
         this.scene.tweens.add({ targets: ring, scale: .25, alpha: .9, duration: 480, onComplete: () => ring.destroy() });
       } else if (effect.kind === 'dash') {
-        const line = this.scene.add.line(0, 0, effect.x, effect.y, effect.tx, effect.ty, COLORS[effect.team], .6).setOrigin(0).setLineWidth(10).setDepth(590);
+        const line = this.scene.add.line(0, 0, effect.x, effect.y, effect.tx, effect.ty, this.color(effect.team), .6).setOrigin(0).setLineWidth(10).setDepth(590);
         this.scene.tweens.add({ targets: line, alpha: 0, duration: 260, onComplete: () => line.destroy() });
       } else if ((effect.kind === 'structureShot' || effect.kind === 'minionShot') && Number.isFinite(effect.tx)) {
         this.renderShot(effect);
       } else if (Number.isFinite(effect.x)) {
-        const color = effect.kind === 'defeat' ? 0xffffff : effect.kind === 'campStrike' ? 0xff6b56 : COLORS[effect.team] || 0xd0a5ff;
+        const color = effect.kind === 'defeat' ? 0xffffff : effect.kind === 'campStrike' ? 0xff6b56 : this.color(effect.team);
         const ring = this.scene.add.circle(effect.x, effect.y, effect.radius || 18, color, .2).setStrokeStyle(2, color, .8).setDepth(610);
         this.scene.tweens.add({ targets: ring, scale: 1.8, alpha: 0, duration: 280, onComplete: () => ring.destroy() });
       }
@@ -202,7 +220,7 @@ export class EntityViews {
 
   renderShot(effect) {
     const structure = effect.kind === 'structureShot';
-    const color = COLORS[effect.team];
+    const color = this.color(effect.team);
     const startY = effect.y - (structure ? 72 : 12);
     const angle = Math.atan2(effect.ty - startY, effect.tx - effect.x);
     const glow = this.scene.add.line(0, 0, effect.x, startY, effect.tx, effect.ty, color, structure ? .34 : .22)
@@ -212,16 +230,18 @@ export class EntityViews {
     const bolt = this.scene.add.image(effect.x, startY, 'arcBolt')
       .setDisplaySize(structure ? 112 : 66, structure ? 42 : 25)
       .setRotation(angle).setTint(color).setDepth(606).setBlendMode(Phaser.BlendModes.ADD);
-    const duration = structure ? 280 : 190;
+    // These are authoritative hitscan attacks: the impact accompanies the HP
+    // snapshot, while the beam fades. No delayed impact after a death/respawn.
+    const duration = structure ? 180 : 120;
+    bolt.setPosition(effect.tx, effect.ty);
+    this.impactBurst(effect.tx, effect.ty, color, structure);
     this.scene.tweens.add({
       targets: bolt,
-      x: effect.tx,
-      y: effect.ty,
+      alpha: 0,
       duration,
       ease: 'Quad.easeIn',
       onComplete: () => {
         bolt.destroy();
-        this.impactBurst(effect.tx, effect.ty, color, structure);
       },
     });
     this.scene.tweens.add({
@@ -248,6 +268,7 @@ export class EntityViews {
     });
     this.scene.tweens.add({ targets: flash, scale: 2.4, alpha: 0, duration: 180, onComplete: () => flash.destroy() });
     this.scene.tweens.add({ targets: ring, scale: 1.8, alpha: 0, duration: 300, onComplete: () => ring.destroy() });
-    this.scene.cameras.main.shake(strong ? 70 : 35, strong ? .0014 : .0005);
+    const local = this.items.get(this.localId)?.root;
+    if (strong && local && Math.hypot(local.x - x, local.y - y) < 90) this.scene.cameras.main.shake(55, .001);
   }
 }

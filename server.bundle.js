@@ -184,18 +184,6 @@ function stableSortByDistance(items, point) {
     return Math.abs(delta) > 1e-4 ? delta : String(a.id).localeCompare(String(b.id));
   });
 }
-function segmentCircleHit(ax, ay, bx, by, circle, extra = 0) {
-  const vx = bx - ax;
-  const vy = by - ay;
-  const wx = circle.x - ax;
-  const wy = circle.y - ay;
-  const length2 = vx * vx + vy * vy || 1;
-  const t = clamp((wx * vx + wy * vy) / length2, 0, 1);
-  const dx = ax + vx * t - circle.x;
-  const dy = ay + vy * t - circle.y;
-  const radius = (circle.radius || 0) + extra;
-  return dx * dx + dy * dy <= radius * radius ? t : null;
-}
 
 // server/geometry.js
 function teamDirection(team) {
@@ -240,22 +228,42 @@ function segmentDistanceSquared(point, start, end) {
   const y = start.y + dy * t;
   return (point.x - x) ** 2 + (point.y - y) ** 2;
 }
+var REGIONS = Object.freeze([
+  {
+    kind: "capsule",
+    surface: "lane",
+    radius: MAP.laneWidth / 2,
+    start: { x: MAP.blueCoreX, y: MAP.blueCoreY },
+    end: { x: MAP.redCoreX, y: MAP.redCoreY }
+  },
+  ...MAP.campSites.flatMap((site) => {
+    const { route } = campGeometry(site);
+    return [
+      { kind: "circle", surface: "camp", side: site.side, x: site.x, y: site.y, radius: MAP.campPocketRadius },
+      ...route.slice(1).map((end, index) => ({
+        kind: "capsule",
+        surface: "path",
+        side: site.side,
+        start: route[index],
+        end,
+        radius: MAP.campPathRadius
+      }))
+    ];
+  })
+].map((region) => Object.freeze(region)));
+function regionDistanceSquared(point, region) {
+  return region.kind === "circle" ? (point.x - region.x) ** 2 + (point.y - region.y) ** 2 : segmentDistanceSquared(point, region.start, region.end);
+}
 function isBattlefieldWalkable(point, radius = 0) {
-  const start = { x: MAP.blueCoreX, y: MAP.blueCoreY };
-  const end = { x: MAP.redCoreX, y: MAP.redCoreY };
-  const laneRadius = Math.max(0, MAP.laneWidth / 2 - radius);
-  if (segmentDistanceSquared(point, start, end) <= laneRadius ** 2) return true;
-  const connectedToLane = (site) => {
-    const geometry = campGeometry(site, radius);
-    const inPocket = (point.x - site.x) ** 2 + (point.y - site.y) ** 2 <= geometry.pocketRadius ** 2;
-    if (inPocket) return true;
-    return geometry.route.slice(1).some((end2, index) => segmentDistanceSquared(point, geometry.route[index], end2) <= geometry.pathRadius ** 2);
-  };
-  return MAP.campSites.some(connectedToLane);
+  return REGIONS.some((region) => {
+    const clearance = Math.max(0, region.radius - radius);
+    return regionDistanceSquared(point, region) <= clearance ** 2;
+  });
 }
 function resolveWalkableMove(origin, desired, radius = 0, blocked = () => false) {
   const canOccupy = (point) => isBattlefieldWalkable(point, radius) && !blocked(point);
-  if (canOccupy(desired)) return desired;
+  const canReach = (point) => canOccupy(point) && !traceWalkableMove(origin, point, radius, blocked).blocked;
+  if (canReach(desired)) return desired;
   const dx = desired.x - origin.x;
   const dy = desired.y - origin.y;
   if (Math.hypot(dx, dy) < 1e-4) return { x: origin.x, y: origin.y };
@@ -268,25 +276,87 @@ function resolveWalkableMove(origin, desired, radius = 0, blocked = () => false)
         x: origin.x + (dx * cos - dy * sin) * scale,
         y: origin.y + (dx * sin + dy * cos) * scale
       };
-      if (canOccupy(point)) return point;
+      if (canReach(point)) return point;
     }
   }
   return { x: origin.x, y: origin.y };
 }
-function traceWalkableMove(origin, desired, radius = 0, blocked = () => false, stepSize = 8) {
+function circleInterval(origin, delta, center, radius) {
+  const x = origin.x - center.x;
+  const y = origin.y - center.y;
+  const a = delta.x * delta.x + delta.y * delta.y;
+  const b = x * delta.x + y * delta.y;
+  const discriminant = b * b - a * (x * x + y * y - radius * radius);
+  if (discriminant < 0) return null;
+  const root = Math.sqrt(discriminant);
+  const start = Math.max(0, (-b - root) / a);
+  const end = Math.min(1, (-b + root) / a);
+  return start <= end ? [start, end] : null;
+}
+function capsuleIntervals(origin, delta, region, radius) {
+  const x = region.end.x - region.start.x;
+  const y = region.end.y - region.start.y;
+  const length = Math.hypot(x, y);
+  const intervals = [circleInterval(origin, delta, region.start, radius), circleInterval(origin, delta, region.end, radius)];
+  if (!length) return intervals;
+  const nx = x / length;
+  const ny = y / length;
+  const ox = origin.x - region.start.x;
+  const oy = origin.y - region.start.y;
+  let start = 0;
+  let end = 1;
+  for (const [position, velocity, low, high] of [
+    [ox * nx + oy * ny, delta.x * nx + delta.y * ny, 0, length],
+    [-ox * ny + oy * nx, -delta.x * ny + delta.y * nx, -radius, radius]
+  ]) {
+    if (Math.abs(velocity) < 1e-10) {
+      if (position < low || position > high) return intervals;
+    } else {
+      const a = (low - position) / velocity;
+      const b = (high - position) / velocity;
+      start = Math.max(start, Math.min(a, b));
+      end = Math.min(end, Math.max(a, b));
+      if (start > end) return intervals;
+    }
+  }
+  intervals.push([start, end]);
+  return intervals;
+}
+function terrainFraction(origin, delta, radius) {
+  const desired = { x: origin.x + delta.x, y: origin.y + delta.y };
+  if (REGIONS.some((region) => {
+    const clearance2 = Math.max(0, region.radius - radius) ** 2;
+    return regionDistanceSquared(origin, region) <= clearance2 && regionDistanceSquared(desired, region) <= clearance2;
+  })) return 1;
+  const intervals = REGIONS.flatMap((region) => {
+    const clearance = Math.max(0, region.radius - radius);
+    return region.kind === "circle" ? [circleInterval(origin, delta, region, clearance)] : capsuleIntervals(origin, delta, region, clearance);
+  }).filter(Boolean).sort((a, b) => a[0] - b[0]);
+  let covered = 0;
+  for (const [start, end] of intervals) {
+    if (start > covered + 1e-9) break;
+    covered = Math.max(covered, end);
+    if (covered >= 1) break;
+  }
+  return covered;
+}
+function traceWalkableMove(origin, desired, radius = 0, blocked = null, stepSize = 8) {
   const dx = desired.x - origin.x;
   const dy = desired.y - origin.y;
   const distance = Math.hypot(dx, dy);
   if (distance < 1e-4) return { x: origin.x, y: origin.y, fraction: 1, blocked: false };
-  const steps = Math.max(1, Math.ceil(distance / Math.max(1, stepSize)));
+  const terrain = terrainFraction(origin, { x: dx, y: dy }, radius);
+  const limit = terrain < 1 ? Math.max(0, terrain - 1e-7) : 1;
+  if (!blocked) return { x: origin.x + dx * limit, y: origin.y + dy * limit, fraction: limit, blocked: terrain < 1 };
+  const steps = Math.max(1, Math.ceil(distance * limit / Math.max(1, stepSize) - 1e-9));
   let last = { x: origin.x, y: origin.y, fraction: 0, blocked: false };
   for (let step = 1; step <= steps; step += 1) {
-    const fraction = step / steps;
+    const fraction = limit * step / steps;
     const point = { x: origin.x + dx * fraction, y: origin.y + dy * fraction };
-    if (!isBattlefieldWalkable(point, radius) || blocked(point)) return { ...last, blocked: true };
+    if (blocked(point)) return { ...last, blocked: true };
     last = { ...point, fraction, blocked: false };
   }
-  return last;
+  return { ...last, blocked: terrain < 1 };
 }
 function formationPoint(team, advance, offset = 0) {
   const spawn = spawnPoint(team);
@@ -446,6 +516,8 @@ function addPlayer(world, id, name = "Player") {
     towerAggroUntil: 0,
     ranks: {},
     offer: null,
+    offerNumber: 0,
+    offerRerolled: false,
     offerExpiresAt: 0,
     queuedOffers: 0,
     rerollLevel: 0,
@@ -499,6 +571,13 @@ function resetPlayerAtFountain(player) {
   player.shieldUntil = 0;
   player.burn = null;
   player.slowUntil = 0;
+  player.slowRatio = 0;
+  player.revealUntil = 0;
+  player.cinderCharges = 0;
+  player.cinderUntil = 0;
+  player.towerAggroTeam = null;
+  player.towerAggroUntil = 0;
+  player.displaceImmuneUntil = 0;
   player.bossPowerUntil = 0;
   player.input.moveX = 0;
   player.input.moveY = 0;
@@ -586,16 +665,22 @@ function playerSummary(world, player, visible, viewerId) {
     protectUntil: player.protectUntil,
     slowUntil: player.slowUntil,
     slowRatio: player.slowRatio,
-    skillReady: player.skillReady,
-    basicReadyAt: player.basicReadyAt,
-    offer: player.offer,
-    offerExpiresAt: player.offerExpiresAt,
-    relicOffer: player.relicOffer,
     relic: player.relic,
     relicUntil: player.relicUntil,
     bossPowerUntil: player.bossPowerUntil,
-    ranks: player.ranks,
-    xp: player.xp
+    ...player.id === viewerId ? {
+      skillReady: player.skillReady,
+      basicReadyAt: player.basicReadyAt,
+      skill1Press: player.input.skill1Press || 0,
+      skill2Press: player.input.skill2Press || 0,
+      guardianProgress: [0, 1].map((side) => world.campProgress[side].killerId === viewerId ? world.campProgress[side].ids.length : 0),
+      offer: player.offer,
+      offerExpiresAt: player.offerExpiresAt,
+      offerRerolled: Boolean(player.offerRerolled),
+      relicOffer: player.relicOffer,
+      ranks: player.ranks,
+      xp: player.xp
+    } : {}
   };
 }
 function visibleMobile(world, team, entity) {
@@ -639,6 +724,7 @@ function filterSnapshot(world, viewerId) {
     structures: world.structures,
     projectiles: world.projectiles.filter((projectile) => isPointVisible(world, team, projectile)).map(publicProjectile),
     effects: world.effects.filter((effect) => {
+      if (effect.kind === "defeat" && effect.targetId === viewerId) return true;
       if (!Number.isFinite(effect.x)) return true;
       if (!isPointVisible(world, team, effect)) return false;
       return !Number.isFinite(effect.tx) || isPointVisible(world, team, { x: effect.tx, y: effect.ty });
@@ -680,14 +766,19 @@ function availableUpgrades(player) {
 }
 function createUpgradeOffer(world, player, reroll = false) {
   const ids = availableUpgrades(player);
-  const salt = Math.imul(player.level + (reroll ? 97 : 0), 2654435761);
+  if (!reroll) {
+    player.offerNumber = (player.offerNumber || 0) + 1;
+    player.offerRerolled = false;
+  }
+  const previous = reroll ? player.offer || [] : [];
+  const salt = Math.imul((player.offerNumber || player.level) + (reroll ? 97 : 0), 2654435761);
   const ordered = seededOrder(ids, (world.matchSeed ^ salt) >>> 0);
-  player.offer = ordered.slice(0, 3);
-  player.offerExpiresAt = world.matchTime + CHOICE_SECONDS;
+  player.offer = [...ordered.filter((id) => !previous.includes(id)), ...ordered.filter((id) => previous.includes(id))].slice(0, 3);
+  if (!reroll) player.offerExpiresAt = world.matchTime + CHOICE_SECONDS;
   return player.offer;
 }
 function awardXp(world, player, amount) {
-  if (!player || world.phase !== "playing" || player.level >= XP_THRESHOLDS.length) return 0;
+  if (!player || !Number.isFinite(amount) || world.phase !== "playing" || player.level >= XP_THRESHOLDS.length) return 0;
   const rival = world.playerOrder.map((id) => world.players[id]).find((other) => other && other.id !== player.id);
   const levels = world.xpLevelSnapshot;
   const playerLevel = levels?.[player.id] ?? player.level;
@@ -712,7 +803,7 @@ function heroKillXp(killer, victim, now) {
   return Math.round(value + bounty);
 }
 function chooseUpgrade(world, player, id) {
-  if (!player?.offer?.includes(id)) return false;
+  if (world.phase !== "playing" || !player?.offer?.includes(id)) return false;
   const upgrade = UPGRADES[id];
   if (!upgrade || (player.ranks[id] || 0) >= upgrade.maxRank) return false;
   player.ranks[id] = (player.ranks[id] || 0) + 1;
@@ -729,8 +820,8 @@ function chooseUpgrade(world, player, id) {
   return true;
 }
 function rerollUpgrade(world, player) {
-  if (player?.hero !== "shana" || !player.offer || player.rerollLevel === player.level) return false;
-  player.rerollLevel = player.level;
+  if (world.phase !== "playing" || player?.hero !== "shana" || !player.offer || player.offerRerolled) return false;
+  player.offerRerolled = true;
   createUpgradeOffer(world, player, true);
   return true;
 }
@@ -751,9 +842,13 @@ function offerRelic(world, player) {
   player.relicOffer = { ids: Object.keys(RELICS), expiresAt: world.matchTime + CHOICE_SECONDS };
 }
 function chooseRelic(world, player, id) {
-  if (!player?.relicOffer?.ids?.includes(id) || !Object.hasOwn(RELICS, id)) return false;
+  if (world.phase !== "playing" || !player?.relicOffer?.ids?.includes(id) || !Object.hasOwn(RELICS, id)) return false;
+  if (player.shieldSource === "warden" && id !== "warden") {
+    player.shield = 0;
+    player.shieldSource = null;
+  }
   player.relic = id;
-  player.relicUntil = world.matchTime + 45;
+  player.relicUntil = world.matchTime + CAMPS.relicSeconds;
   player.relicOffer = null;
   player.wardenReadyAt = world.matchTime;
   return true;
@@ -771,7 +866,7 @@ var HEROES = Object.freeze({
     passive: "reroll",
     skills: [
       { id: "precision", cooldown: 9, damage: 170, range: 520, projectileSpeed: 900, icon: "\u2726" },
-      { id: "volley", cooldown: 11, damage: 55, count: 3, spread: 0.11, range: 430, icon: "\u224B" }
+      { id: "volley", cooldown: 11, damage: 55, count: 3, spread: 0.11, range: 430, slow: 0.15, slowSeconds: 0.75, icon: "\u224B" }
     ]
   },
   diamond: {
@@ -796,8 +891,8 @@ var HEROES = Object.freeze({
     frameHeight: 181,
     passive: "thirdShotBurn",
     skills: [
-      { id: "emberLine", cooldown: 11, damage: 140, burnDps: 15, burnSeconds: 2, range: 480, icon: "\u2668" },
-      { id: "cinderFocus", cooldown: 12, charges: 3, bonusDamage: 15, duration: 6, icon: "\u25B3" }
+      { id: "emberLine", cooldown: 11, damage: 140, burnDps: 15, burnSeconds: 2, range: 480, pierces: 2, icon: "\u2668" },
+      { id: "cinderFocus", cooldown: 12, charges: 3, bonusDamage: 15, duration: 6, slow: 0.1, slowSeconds: 0.65, icon: "\u25B3" }
     ]
   },
   hina: {
@@ -852,8 +947,17 @@ function applyInput(world, playerId, data) {
   const skill1 = data.skill1 === true;
   const skill2 = data.skill2 === true;
   const canAct = world.phase === "playing" && !world.paused && player.spiritUntil <= world.matchTime;
-  (_a = player.input).queuedSkill1 || (_a.queuedSkill1 = canAct && skill1 && !player.input.skill1);
-  (_b = player.input).queuedSkill2 || (_b.queuedSkill2 = canAct && skill2 && !player.input.skill2);
+  const pressed = (key, held) => {
+    const counter = data[`${key}Press`];
+    if (counter === void 0) return held && !player.input[key];
+    if (!Number.isSafeInteger(counter) || counter < 0) return false;
+    const previous = player.input[`${key}Press`] || 0;
+    player.input[`${key}Press`] = Math.max(previous, counter);
+    return counter > previous;
+  };
+  const press1 = pressed("skill1", skill1), press2 = pressed("skill2", skill2);
+  (_a = player.input).queuedSkill1 || (_a.queuedSkill1 = canAct && press1);
+  (_b = player.input).queuedSkill2 || (_b.queuedSkill2 = canAct && press2);
   player.input.seq = seq;
   player.input.moveX = move.x * move.length;
   player.input.moveY = move.y * move.length;
@@ -917,9 +1021,11 @@ function hasSiegeEscort(world, sourceTeam, structure2) {
 function towerForTeam(world, team) {
   return team === 0 ? world.structures.blueTower : world.structures.redTower;
 }
-function damageStructure(world, target, amount, damageClass, sourceId) {
+function damageStructure(world, target, amount, damageClass, sourceId, origin) {
   const sourceTeam = entityTeam(world, sourceId);
   if (sourceTeam === null || sourceTeam === target.team) return 0;
+  const attacker = origin || findEntity(world, sourceId);
+  if (!attacker || distanceSquared(attacker, target) > STRUCTURES[target.kind].range ** 2) return 0;
   if (target.kind === "core" && towerForTeam(world, target.team).hp > 0) return 0;
   let adjusted = amount;
   const source = world.players[sourceId];
@@ -933,7 +1039,8 @@ function damageStructure(world, target, amount, damageClass, sourceId) {
   target.hp = Math.max(0, target.hp - dealt);
   if (target.hp === 0 && target.kind === "core") {
     world.phase = "finished";
-    world.winnerTeam = sourceTeam;
+    const ownCore = sourceTeam === 0 ? world.structures.blueCore : world.structures.redCore;
+    world.winnerTeam = ownCore.hp <= 0 ? null : sourceTeam;
     world.finishReason = "core";
   }
   return dealt;
@@ -950,7 +1057,7 @@ function damagePlayer(world, target, amount, damageClass, sourceId) {
   target.shield = Math.max(0, target.shield - absorbed);
   if (absorbed > 0 && target.shield <= 0) {
     target.shieldSource = null;
-    if (shieldSource === "crystal") target.crystalReadyAt = world.matchTime + 8;
+    if (shieldSource === "crystal" || shieldSource === "aegis") target.crystalReadyAt = world.matchTime + 8;
     if (shieldSource === "warden") target.wardenReadyAt = world.matchTime + 8;
   }
   const dealt = adjusted - absorbed;
@@ -1038,19 +1145,23 @@ function pushTarget(world, target, sourceId, distance) {
   const direction = normalize(target.x - source.x, target.y - source.y);
   const x = clamp(target.x + direction.x * distance, target.radius, MAP.width - target.radius);
   const y = clamp(target.y + direction.y * distance, target.radius, MAP.height - target.radius);
-  if (isBattlefieldWalkable({ x, y }, target.radius)) {
-    target.x = x;
-    target.y = y;
-  }
+  const resolved = traceWalkableMove(
+    target,
+    { x, y },
+    target.radius,
+    (point) => Object.values(world.structures).some((structure2) => structure2.hp > 0 && distanceSquared(point, structure2) < (target.radius + structure2.radius) ** 2)
+  );
+  target.x = resolved.x;
+  target.y = resolved.y;
   target.displaceImmuneUntil = world.matchTime + 0.4;
 }
-function applyDamage(world, target, amount, damageClass, sourceId, status = {}) {
-  if (!target || target.hp <= 0 || amount <= 0) return 0;
+function applyDamage(world, target, amount, damageClass, sourceId, status = {}, origin) {
+  if (!target || target.hp <= 0 || !Number.isFinite(amount) || amount <= 0) return 0;
   const impact = { x: target.x, y: target.y };
   const deathsBefore = target.kind === "player" ? target.deaths : 0;
   let dealt = 0;
   if (target.kind === "player") dealt = damagePlayer(world, target, amount, damageClass, sourceId);
-  else if (target.kind === "tower" || target.kind === "core") dealt = damageStructure(world, target, amount, damageClass, sourceId);
+  else if (target.kind === "tower" || target.kind === "core") dealt = damageStructure(world, target, amount, damageClass, sourceId, origin);
   else {
     dealt = Math.max(0.01, round(amount, 100));
     target.hp = Math.max(0, target.hp - dealt);
@@ -1077,12 +1188,10 @@ function applyDamage(world, target, amount, damageClass, sourceId, status = {}) 
     const until = world.matchTime + Math.min(2, status.burnSeconds || 0);
     if (!target.burn) {
       target.burn = { sourceId, dps, damageClass: status.burnClass || "skill", until, nextAt: world.matchTime + 0.25 };
-    } else {
-      if (dps >= target.burn.dps) {
-        target.burn.sourceId = sourceId;
-        target.burn.damageClass = status.burnClass || "skill";
-      }
-      target.burn.dps = Math.max(target.burn.dps, dps);
+    } else if (dps >= target.burn.dps) {
+      target.burn.sourceId = sourceId;
+      target.burn.damageClass = status.burnClass || "skill";
+      target.burn.dps = dps;
       target.burn.until = Math.max(target.burn.until, until);
     }
   }
@@ -1130,13 +1239,15 @@ function spawnCamp(world, camp2) {
   camp2.burn = null;
   camp2.pendingStrike = null;
   camp2.cycle += 1;
-  world.campProgress[camp2.side] = { killerId: null, ids: [] };
+  const progress = world.campProgress[camp2.side];
+  progress.ids = progress.ids.filter((id) => id !== camp2.id);
+  if (!progress.ids.length) progress.killerId = null;
   addEffect(world, "campSpawn", { x: camp2.x, y: camp2.y, team: null }, 0.8);
 }
 function targetFor(world, camp2) {
   const players = Object.values(world.players).filter((player) => {
     const engageRadius = Math.max(0, MAP.campPocketRadius - player.radius);
-    return player.spiritUntil <= world.matchTime && distanceSquared(player, { x: camp2.homeX, y: camp2.homeY }) <= engageRadius ** 2;
+    return player.hp > 0 && player.spiritUntil <= world.matchTime && distanceSquared(player, { x: camp2.homeX, y: camp2.homeY }) <= engageRadius ** 2;
   });
   return players.length ? stableSortByDistance(players, camp2)[0] : null;
 }
@@ -1171,9 +1282,9 @@ function resolveStrike(world, camp2, config2) {
   if (!strike || world.matchTime < strike.at) return false;
   camp2.pendingStrike = null;
   for (const player of Object.values(world.players)) {
-    if (player.spiritUntil > world.matchTime) continue;
+    if (player.hp <= 0 || player.spiritUntil > world.matchTime) continue;
     const radius = strike.radius + player.radius;
-    if (distanceSquared(player, strike) <= radius * radius) {
+    if (distanceSquared(player, strike) <= radius * radius && !traceWalkableMove(strike, player).blocked) {
       applyDamage(world, player, config2.damage, "camp", camp2.id, config2);
     }
   }
@@ -1264,24 +1375,35 @@ function enemyStructure(world, team) {
 }
 function minionTarget(world, minion) {
   const radius2 = MINIONS.aggroRadius ** 2;
-  const enemyMinions = world.minions.filter((other) => other.team !== minion.team && other.hp > 0 && distanceSquared(other, minion) <= radius2);
+  const reachable = (target) => distanceSquared(target, minion) <= radius2 && Math.abs(laneOffset(target)) <= MAP.laneWidth / 2 - minion.radius && !traceWalkableMove(minion, target).blocked;
+  const enemyMinions = world.minions.filter((other) => other.team !== minion.team && other.hp > 0 && reachable(other));
   if (enemyMinions.length) return stableSortByDistance(enemyMinions, minion)[0];
-  const enemyHeroes = Object.values(world.players).filter((player) => player.team !== minion.team && player.spiritUntil <= world.matchTime && distanceSquared(player, minion) <= radius2);
+  const enemyHeroes = Object.values(world.players).filter((player) => player.team !== minion.team && player.hp > 0 && player.spiritUntil <= world.matchTime && reachable(player));
   if (enemyHeroes.length) return stableSortByDistance(enemyHeroes, minion)[0];
   return enemyStructure(world, minion.team);
 }
-function movementToward(entity, target, speed, dt) {
-  const direction = normalize(target.x - entity.x, target.y - entity.y);
+function movementToward(world, entity, target, speed, dt) {
+  const progress = laneProgress(entity);
+  const travel = laneProgress(target) >= progress ? 1 : -1;
+  const obstruction = Object.values(world.structures).find((structure2) => {
+    const ahead = (laneProgress(structure2) - progress) * travel;
+    return structure2.hp > 0 && structure2.id !== target.id && ahead > -85 && ahead < 180;
+  });
+  const side = Math.sign(entity.laneOffset) || (entity.team === 0 ? -1 : 1);
+  const waypoint = obstruction ? lanePoint(laneProgress(obstruction) + travel * 110, side * (obstruction.radius + entity.radius + 26)) : target;
+  const direction = normalize(waypoint.x - entity.x, waypoint.y - entity.y);
   const raw = {
     x: entity.x + direction.x * speed * dt,
     y: entity.y + direction.y * speed * dt
   };
   const anchor = lanePoint(laneProgress(raw), entity.laneOffset);
-  const pull = Math.min(1, dt * 1.8);
-  return {
+  const pull = obstruction ? 0 : Math.min(1, dt * 1.8);
+  const desired = {
     x: roundAround(raw.x + (anchor.x - raw.x) * pull, MAP.width / 2),
     y: roundAround(raw.y + (anchor.y - raw.y) * pull, MAP.height / 2)
   };
+  const blocked = (point) => Object.values(world.structures).some((structure2) => structure2.hp > 0 && distanceSquared(point, structure2) < (entity.radius + structure2.radius) ** 2);
+  return resolveWalkableMove(entity, desired, entity.radius, blocked);
 }
 function updateMinions(world, dt) {
   const movements = [];
@@ -1294,13 +1416,13 @@ function updateMinions(world, dt) {
     minion.targetId = target.id;
     const naturalRange = config2.range + minion.radius + (target.radius || 0);
     const range = target.kind === "tower" || target.kind === "core" ? Math.min(naturalRange, STRUCTURES[target.kind].range) : naturalRange;
-    if (distanceSquared(minion, target) <= range * range) {
+    if (distanceSquared(minion, target) <= range * range && !traceWalkableMove(minion, target).blocked) {
       if (world.matchTime < minion.attackReadyAt) continue;
       minion.attackReadyAt = world.matchTime + config2.cooldown;
       const amount = target.kind === "player" && config2.heroDamage ? config2.heroDamage : config2.damage;
       attacks.push({ minion, target, amount: amount * minion.damageScale });
     } else {
-      movements.push({ minion, position: movementToward(minion, target, config2.speed, dt) });
+      movements.push({ minion, position: movementToward(world, minion, target, config2.speed, dt) });
     }
   }
   for (const { minion, position } of movements) Object.assign(minion, position);
@@ -1312,10 +1434,10 @@ function updateMinions(world, dt) {
 }
 function validStructureTargets(world, structure2) {
   const radius2 = STRUCTURES[structure2.kind].range ** 2;
-  const heroes = Object.values(world.players).filter((player) => player.team !== structure2.team && player.spiritUntil <= world.matchTime && distanceSquared(player, structure2) <= radius2);
+  const heroes = Object.values(world.players).filter((player) => player.team !== structure2.team && player.hp > 0 && player.spiritUntil <= world.matchTime && distanceSquared(player, structure2) <= radius2 && !traceWalkableMove(structure2, player).blocked);
   const retaliation = heroes.filter((player) => player.towerAggroTeam === structure2.team && player.towerAggroUntil > world.matchTime);
   if (retaliation.length) return stableSortByDistance(retaliation, structure2);
-  const minions = world.minions.filter((minion) => minion.team !== structure2.team && minion.hp > 0 && distanceSquared(minion, structure2) <= radius2);
+  const minions = world.minions.filter((minion) => minion.team !== structure2.team && minion.hp > 0 && distanceSquared(minion, structure2) <= radius2 && !traceWalkableMove(structure2, minion).blocked);
   if (minions.length) return stableSortByDistance(minions, structure2);
   return stableSortByDistance(heroes, structure2);
 }
@@ -1381,7 +1503,7 @@ function spawnProjectile(world, options) {
     dy: options.dy / length,
     radius,
     speed: options.speed,
-    remaining: options.range,
+    remaining: Math.max(0, options.range - Math.hypot(muzzle.x - source.x, muzzle.y - source.y)),
     damage: options.damage,
     damageClass: options.damageClass || "basic",
     status: options.status || {},
@@ -1414,58 +1536,95 @@ function targetsFor(world, projectile) {
   return targets.filter((target) => !projectile.hitIds.includes(target.id));
 }
 var COLLISION_PRIORITY = Object.freeze({ minion: 0, clone: 1, player: 2, camp: 3, tower: 4, core: 5 });
+function circleEntry(projectile, target, travel) {
+  const x = projectile.x - target.x;
+  const y = projectile.y - target.y;
+  const radius = projectile.radius + target.radius;
+  const c = x * x + y * y - radius * radius;
+  if (c <= 0) return 0;
+  const projection = x * projectile.dx + y * projectile.dy;
+  const discriminant = projection * projection - c;
+  if (discriminant < 0 || travel <= 0) return null;
+  const distance = -projection - Math.sqrt(discriminant);
+  return distance >= -1e-6 && distance <= travel + 1e-6 ? Math.max(0, Math.min(1, distance / travel)) : null;
+}
 function updateProjectiles(world, dt) {
-  const projectiles = world.projectiles.slice();
-  if (world.snapshotTick % 2) projectiles.reverse();
-  for (const projectile of projectiles) {
+  const impacts = [];
+  for (const projectile of world.projectiles) {
     if (!projectile.alive || projectile.remaining <= 0) continue;
-    const travel = Math.min(projectile.remaining, projectile.speed * dt);
-    const nextX = projectile.x + projectile.dx * travel;
-    const nextY = projectile.y + projectile.dy * travel;
-    const terrain = traceWalkableMove(projectile, { x: nextX, y: nextY }, projectile.radius);
-    let hit = null;
-    let hitT = Infinity;
-    for (const target of targetsFor(world, projectile)) {
-      const t = segmentCircleHit(projectile.x, projectile.y, nextX, nextY, target, projectile.radius);
-      if (t === null || t > terrain.fraction + 1e-6 || t > hitT + 1e-6) continue;
-      if (Math.abs(t - hitT) <= 1e-6 && (COLLISION_PRIORITY[target.kind] ?? 9) >= (COLLISION_PRIORITY[hit?.kind] ?? 9)) continue;
-      hit = target;
-      hitT = t;
-    }
-    if (hit) {
-      projectile.x += (nextX - projectile.x) * hitT;
-      projectile.y += (nextY - projectile.y) * hitT;
-      applyDamage(world, hit, projectile.damage, projectile.damageClass, projectile.ownerId, projectile.status);
-      addEffect(world, "impact", { x: projectile.x, y: projectile.y, team: projectile.team, projectileType: projectile.projectileType }, 0.3);
-      projectile.hitIds.push(hit.id);
-      if (projectile.pierces > 0) {
-        projectile.pierces -= 1;
-        projectile.x += projectile.dx * (hit.radius + projectile.radius + 1);
-        projectile.y += projectile.dy * (hit.radius + projectile.radius + 1);
-        projectile.remaining -= travel * hitT;
-      } else {
-        projectile.alive = false;
+    const initialBudget = Math.min(projectile.remaining, projectile.speed * dt);
+    let budget = initialBudget;
+    while (projectile.alive && budget > 0) {
+      const travel = budget;
+      const nextX = projectile.x + projectile.dx * travel;
+      const nextY = projectile.y + projectile.dy * travel;
+      const terrain = traceWalkableMove(projectile, { x: nextX, y: nextY }, projectile.radius);
+      let hit = null;
+      let hitT = Infinity;
+      for (const target of targetsFor(world, projectile)) {
+        const t = circleEntry(projectile, target, travel);
+        if (t === null || t > terrain.fraction + 1e-6) continue;
+        const sameFootprint = hit && distanceSquared(target, hit) <= 1e-6;
+        if (!sameFootprint && t > hitT + 1e-6) continue;
+        if ((sameFootprint || Math.abs(t - hitT) <= 1e-6) && (COLLISION_PRIORITY[target.kind] ?? 9) >= (COLLISION_PRIORITY[hit?.kind] ?? 9)) continue;
+        hit = target;
+        hitT = sameFootprint ? Math.min(hitT, t) : t;
       }
-      continue;
+      if (hit) {
+        projectile.x += (nextX - projectile.x) * hitT;
+        projectile.y += (nextY - projectile.y) * hitT;
+        impacts.push({ projectile, hit, at: (initialBudget - budget + travel * hitT) / projectile.speed });
+        addEffect(world, "impact", { x: projectile.x, y: projectile.y, team: projectile.team, projectileType: projectile.projectileType }, 0.3);
+        projectile.hitIds.push(hit.id);
+        projectile.remaining -= travel * hitT;
+        budget -= travel * hitT;
+        if (projectile.pierces > 0) projectile.pierces -= 1;
+        else projectile.alive = false;
+        continue;
+      }
+      if (terrain.blocked) {
+        projectile.x = terrain.x;
+        projectile.y = terrain.y;
+        projectile.remaining -= travel * terrain.fraction;
+        projectile.alive = false;
+        addEffect(world, "impact", {
+          x: projectile.x,
+          y: projectile.y,
+          team: projectile.team,
+          projectileType: projectile.projectileType
+        }, 0.3);
+        continue;
+      }
+      projectile.x = nextX;
+      projectile.y = nextY;
+      projectile.remaining -= travel;
+      budget = 0;
+      if (nextX < 0 || nextX > MAP.width || nextY < 0 || nextY > MAP.height) projectile.alive = false;
     }
-    if (terrain.blocked) {
-      projectile.x = terrain.x;
-      projectile.y = terrain.y;
-      projectile.remaining -= travel * terrain.fraction;
-      projectile.alive = false;
-      addEffect(world, "impact", {
-        x: projectile.x,
-        y: projectile.y,
-        team: projectile.team,
-        projectileType: projectile.projectileType
-      }, 0.3);
-      continue;
-    }
-    projectile.x = nextX;
-    projectile.y = nextY;
-    projectile.remaining -= travel;
-    if (nextX < 0 || nextX > MAP.width || nextY < 0 || nextY > MAP.height) projectile.alive = false;
   }
+  impacts.sort((left, right) => {
+    const time = Math.round(left.at * 1e6) - Math.round(right.at * 1e6);
+    if (time) return time;
+    const damage = right.projectile.damage - left.projectile.damage;
+    if (Math.abs(damage) > 1e-6) return damage;
+    const distance = impactDistance(left) - impactDistance(right);
+    if (Math.abs(distance) > 1e-6) return distance;
+    return Number(left.projectile.team !== left.hit.side) - Number(right.projectile.team !== right.hit.side);
+  });
+  for (const { projectile, hit } of impacts) {
+    applyDamage(
+      world,
+      hit,
+      projectile.damage,
+      projectile.damageClass,
+      projectile.ownerId,
+      projectile.status,
+      { x: projectile.sourceX, y: projectile.sourceY }
+    );
+  }
+}
+function impactDistance({ projectile, hit }) {
+  return distanceSquared({ x: projectile.sourceX, y: projectile.sourceY }, hit);
 }
 
 // server/players.js
@@ -1509,8 +1668,11 @@ function basicAttack(world, player, stats) {
       projectileType = "flame";
     }
     if (player.cinderCharges > 0 && player.cinderUntil > world.matchTime) {
+      const focus = HEROES.scarlett.skills[1];
       player.cinderCharges -= 1;
-      damage += HEROES.scarlett.skills[1].bonusDamage;
+      damage += focus.bonusDamage * stats.skillDamage;
+      status.slow = focus.slow;
+      status.slowSeconds = focus.slowSeconds;
       projectileType = "cinder";
     }
   }
@@ -1547,15 +1709,18 @@ function dash(world, player, skill) {
   const origin = { x: player.x, y: player.y };
   let direction = normalize(player.input.moveX, player.input.moveY, 0, 0);
   if (direction.length === 0) direction = normalize(player.input.aimX, player.input.aimY, 1, 0);
-  const steps = 12;
-  for (let step = 1; step <= steps; step += 1) {
-    const distance = skill.distance * step / steps;
-    const x = clamp(origin.x + direction.x * distance, player.radius, MAP.width - player.radius);
-    const y = clamp(origin.y + direction.y * distance, player.radius, MAP.height - player.radius);
-    if (!isBattlefieldWalkable({ x, y }, player.radius) || blockedByObstacle(world, x, y, player.radius)) break;
-    player.x = x;
-    player.y = y;
-  }
+  const desired = {
+    x: clamp(origin.x + direction.x * skill.distance, player.radius, MAP.width - player.radius),
+    y: clamp(origin.y + direction.y * skill.distance, player.radius, MAP.height - player.radius)
+  };
+  const resolved = traceWalkableMove(
+    origin,
+    desired,
+    player.radius,
+    (point) => blockedByObstacle(world, point.x, point.y, player.radius)
+  );
+  player.x = resolved.x;
+  player.y = resolved.y;
   world.clones.push({
     id: `c${world.nextEntityId++}`,
     kind: "clone",
@@ -1588,11 +1753,12 @@ function castSkill(world, player, index, stats, instantIntents) {
       status: { reveal: 2.5 }
     });
   } else if (skill.id === "volley") {
-    for (let i = -1; i <= 1; i += 1) fire(world, player, angle + i * skill.spread, skill.damage * stats.skillDamage, {
+    for (let i = 0; i < skill.count; i += 1) fire(world, player, angle + (i - (skill.count - 1) / 2) * skill.spread, skill.damage * stats.skillDamage, {
       damageClass: "skill",
       projectileType: "volley",
       range: skill.range,
-      radius: 7
+      radius: 7,
+      status: { slow: skill.slow, slowSeconds: skill.slowSeconds }
     });
   } else if (skill.id === "aegis") {
     player.shield = Math.max(player.shield, skill.shield);
@@ -1607,6 +1773,7 @@ function castSkill(world, player, index, stats, instantIntents) {
       projectileType: "emberLine",
       range: skill.range,
       radius: 15,
+      pierces: skill.pierces,
       status: { burnDps: skill.burnDps * stats.skillDamage, burnSeconds: skill.burnSeconds }
     });
   } else if (skill.id === "cinderFocus") {
@@ -1634,14 +1801,14 @@ function resolveInstantIntents(world, intents) {
     addEffect(world, "repulse", { ...source, team: intent.player.team, radius: intent.skill.radius }, 0.45);
   }
   for (const hit of hits) {
-    applyDamage(world, hit.target, hit.damage, "skill", hit.player.id, {
+    hit.dealt = applyDamage(world, hit.target, hit.damage, "skill", hit.player.id, {
       slow: hit.skill.slow,
       slowSeconds: hit.skill.slowSeconds
     });
   }
   for (const hit of hits) {
     const target = hit.target;
-    if (target.kind !== "player" || target.spiritUntil > world.matchTime || world.matchTime < target.displaceImmuneUntil) continue;
+    if (hit.dealt <= 0 || target.kind !== "player" || target.spiritUntil > world.matchTime || world.matchTime < target.displaceImmuneUntil) continue;
     const direction = normalize(
       hit.targetPosition.x - hit.source.x,
       hit.targetPosition.y - hit.source.y
@@ -1660,11 +1827,11 @@ function resolveInstantIntents(world, intents) {
   }
 }
 function updateClone(world, clone, stats) {
-  if (world.matchTime < clone.nextShotAt || clone.shotsLeft <= 0) return;
+  if (clone.hp <= 0 || clone.expiresAt <= world.matchTime || world.matchTime < clone.nextShotAt || clone.shotsLeft <= 0) return;
   const candidates = [
     ...Object.values(world.players).filter((target2) => target2.team !== clone.team && target2.spiritUntil <= world.matchTime),
     ...world.minions.filter((target2) => target2.team !== clone.team)
-  ].filter((target2) => distanceSquared(target2, clone) <= 340 ** 2 && isPointVisible(world, clone.team, target2));
+  ].filter((target2) => distanceSquared(target2, clone) <= 340 ** 2 && isPointVisible(world, clone.team, target2) && !traceWalkableMove(clone, target2, 7).blocked);
   const target = stableSortByDistance(candidates, clone)[0];
   if (!target) return;
   const direction = normalize(target.x - clone.x, target.y - clone.y);
@@ -1722,14 +1889,15 @@ function updatePlayers(world, dt) {
       x = clamped.x;
       y = clamped.y;
     }
+    const desired = { x: roundAround(x, MAP.width / 2), y: roundAround(y, MAP.height / 2) };
     const resolved = resolveWalkableMove(
       player,
-      { x, y },
+      desired,
       player.radius,
       (point) => blockedByObstacle(world, point.x, point.y, player.radius)
     );
-    player.x = roundAround(resolved.x, MAP.width / 2);
-    player.y = roundAround(resolved.y, MAP.height / 2);
+    player.x = resolved.x;
+    player.y = resolved.y;
     const spawn = spawnPoint(player.team);
     const atFountain = distanceSquared(player, spawn) <= PLAYER.fountainHealRadius ** 2;
     if (atFountain && player.spiritUntil <= world.matchTime && world.matchTime - player.lastHeroDamageAt >= PLAYER.fountainHealCombatDelay) {
@@ -1916,11 +2084,13 @@ function onInput(room, player, input) {
 }
 function tick(room, dt) {
   const world = room.state.world;
+  if (world.ended) return;
   stepWorld(world, dt);
-  if (world.snapshotTick % 2 === 0 || world.phase !== "playing" || world.paused) sendSnapshots(room);
-  if (world.phase === "finished" && !world.ended) {
+  if (world.phase === "finished") {
     world.ended = true;
     sendSnapshots(room);
     room.end({ winnerTeam: world.winnerTeam, reason: world.finishReason });
+    return;
   }
+  if (world.snapshotTick % 2 === 0 || world.phase !== "playing" || world.paused) sendSnapshots(room);
 }

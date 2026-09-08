@@ -2,7 +2,7 @@ import { MAP, STRUCTURES } from './config.js';
 import { applyDamage } from './combat.js';
 import { addEffect } from './effects.js';
 import { traceWalkableMove } from './geometry.js';
-import { distanceSquared, segmentCircleHit } from './math.js';
+import { distanceSquared } from './math.js';
 
 export function spawnProjectile(world, options) {
   const length = Math.hypot(options.dx, options.dy) || 1;
@@ -26,7 +26,7 @@ export function spawnProjectile(world, options) {
     dy: options.dy / length,
     radius,
     speed: options.speed,
-    remaining: options.range,
+    remaining: Math.max(0, options.range - Math.hypot(muzzle.x - source.x, muzzle.y - source.y)),
     damage: options.damage,
     damageClass: options.damageClass || 'basic',
     status: options.status || {},
@@ -61,55 +61,96 @@ function targetsFor(world, projectile) {
 
 const COLLISION_PRIORITY = Object.freeze({ minion: 0, clone: 1, player: 2, camp: 3, tower: 4, core: 5 });
 
+function circleEntry(projectile, target, travel) {
+  const x = projectile.x - target.x;
+  const y = projectile.y - target.y;
+  const radius = projectile.radius + target.radius;
+  const c = x * x + y * y - radius * radius;
+  if (c <= 0) return 0;
+  const projection = x * projectile.dx + y * projectile.dy;
+  const discriminant = projection * projection - c;
+  if (discriminant < 0 || travel <= 0) return null;
+  const distance = -projection - Math.sqrt(discriminant);
+  return distance >= -0.000001 && distance <= travel + 0.000001
+    ? Math.max(0, Math.min(1, distance / travel)) : null;
+}
+
 export function updateProjectiles(world, dt) {
-  const projectiles = world.projectiles.slice();
-  if (world.snapshotTick % 2) projectiles.reverse();
-  for (const projectile of projectiles) {
+  const impacts = [];
+  // Every shot collides against the same tick state. A guardian destroyed by
+  // another shot this tick still intercepts contacts already in flight.
+  for (const projectile of world.projectiles) {
     if (!projectile.alive || projectile.remaining <= 0) continue;
-    const travel = Math.min(projectile.remaining, projectile.speed * dt);
-    const nextX = projectile.x + projectile.dx * travel;
-    const nextY = projectile.y + projectile.dy * travel;
-    const terrain = traceWalkableMove(projectile, { x: nextX, y: nextY }, projectile.radius);
-    let hit = null;
-    let hitT = Infinity;
-    for (const target of targetsFor(world, projectile)) {
-      const t = segmentCircleHit(projectile.x, projectile.y, nextX, nextY, target, projectile.radius);
-      if (t === null || t > terrain.fraction + 0.000001 || t > hitT + 0.000001) continue;
-      if (Math.abs(t - hitT) <= 0.000001
-        && (COLLISION_PRIORITY[target.kind] ?? 9) >= (COLLISION_PRIORITY[hit?.kind] ?? 9)) continue;
-      hit = target;
-      hitT = t;
-    }
-    if (hit) {
-      projectile.x += (nextX - projectile.x) * hitT;
-      projectile.y += (nextY - projectile.y) * hitT;
-      applyDamage(world, hit, projectile.damage, projectile.damageClass, projectile.ownerId, projectile.status);
-      addEffect(world, 'impact', { x: projectile.x, y: projectile.y, team: projectile.team, projectileType: projectile.projectileType }, 0.3);
-      projectile.hitIds.push(hit.id);
-      if (projectile.pierces > 0) {
-        projectile.pierces -= 1;
-        projectile.x += projectile.dx * (hit.radius + projectile.radius + 1);
-        projectile.y += projectile.dy * (hit.radius + projectile.radius + 1);
-        projectile.remaining -= travel * hitT;
-      } else {
-        projectile.alive = false;
+    const initialBudget = Math.min(projectile.remaining, projectile.speed * dt);
+    let budget = initialBudget;
+    // Hit ids prevent repeat hits at t=0; no teleport is needed after piercing.
+    while (projectile.alive && budget > 0) {
+      const travel = budget;
+      const nextX = projectile.x + projectile.dx * travel;
+      const nextY = projectile.y + projectile.dy * travel;
+      const terrain = traceWalkableMove(projectile, { x: nextX, y: nextY }, projectile.radius);
+      let hit = null;
+      let hitT = Infinity;
+      for (const target of targetsFor(world, projectile)) {
+        const t = circleEntry(projectile, target, travel);
+        if (t === null || t > terrain.fraction + 0.000001) continue;
+        // Fully overlapping bodies share a footprint: preserve minion cover even
+        // when the hero's cosmetic/body radius is a few units larger.
+        const sameFootprint = hit && distanceSquared(target, hit) <= 0.000001;
+        if (!sameFootprint && t > hitT + 0.000001) continue;
+        if ((sameFootprint || Math.abs(t - hitT) <= 0.000001)
+          && (COLLISION_PRIORITY[target.kind] ?? 9) >= (COLLISION_PRIORITY[hit?.kind] ?? 9)) continue;
+        hit = target;
+        hitT = sameFootprint ? Math.min(hitT, t) : t;
       }
-      continue;
+      if (hit) {
+        projectile.x += (nextX - projectile.x) * hitT;
+        projectile.y += (nextY - projectile.y) * hitT;
+        impacts.push({ projectile, hit, at: (initialBudget - budget + travel * hitT) / projectile.speed });
+        addEffect(world, 'impact', { x: projectile.x, y: projectile.y, team: projectile.team, projectileType: projectile.projectileType }, 0.3);
+        projectile.hitIds.push(hit.id);
+        projectile.remaining -= travel * hitT;
+        budget -= travel * hitT;
+        if (projectile.pierces > 0) projectile.pierces -= 1;
+        else projectile.alive = false;
+        continue;
+      }
+      if (terrain.blocked) {
+        projectile.x = terrain.x;
+        projectile.y = terrain.y;
+        projectile.remaining -= travel * terrain.fraction;
+        projectile.alive = false;
+        addEffect(world, 'impact', {
+          x: projectile.x, y: projectile.y, team: projectile.team,
+          projectileType: projectile.projectileType,
+        }, 0.3);
+        continue;
+      }
+      projectile.x = nextX;
+      projectile.y = nextY;
+      projectile.remaining -= travel;
+      budget = 0;
+      if (nextX < 0 || nextX > MAP.width || nextY < 0 || nextY > MAP.height) projectile.alive = false;
     }
-    if (terrain.blocked) {
-      projectile.x = terrain.x;
-      projectile.y = terrain.y;
-      projectile.remaining -= travel * terrain.fraction;
-      projectile.alive = false;
-      addEffect(world, 'impact', {
-        x: projectile.x, y: projectile.y, team: projectile.team,
-        projectileType: projectile.projectileType,
-      }, 0.3);
-      continue;
-    }
-    projectile.x = nextX;
-    projectile.y = nextY;
-    projectile.remaining -= travel;
-    if (nextX < 0 || nextX > MAP.width || nextY < 0 || nextY > MAP.height) projectile.alive = false;
   }
+  impacts.sort((left, right) => {
+    const time = Math.round(left.at * 1e6) - Math.round(right.at * 1e6);
+    if (time) return time;
+    // Simultaneous contacts need a side-independent tie rule, including shots
+    // whose muzzle starts inside a guardian. Stronger/closer hits resolve first;
+    // an otherwise exact neutral-objective tie favors its defending side.
+    const damage = right.projectile.damage - left.projectile.damage;
+    if (Math.abs(damage) > .000001) return damage;
+    const distance = impactDistance(left) - impactDistance(right);
+    if (Math.abs(distance) > .000001) return distance;
+    return Number(left.projectile.team !== left.hit.side) - Number(right.projectile.team !== right.hit.side);
+  });
+  for (const { projectile, hit } of impacts) {
+    applyDamage(world, hit, projectile.damage, projectile.damageClass, projectile.ownerId, projectile.status,
+      { x: projectile.sourceX, y: projectile.sourceY });
+  }
+}
+
+function impactDistance({ projectile, hit }) {
+  return distanceSquared({ x: projectile.sourceX, y: projectile.sourceY }, hit);
 }

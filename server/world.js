@@ -116,6 +116,8 @@ export function addPlayer(world, id, name = 'Player') {
     towerAggroUntil: 0,
     ranks: {},
     offer: null,
+    offerNumber: 0,
+    offerRerolled: false,
     offerExpiresAt: 0,
     queuedOffers: 0,
     rerollLevel: 0,
@@ -172,6 +174,13 @@ export function resetPlayerAtFountain(player) {
   player.shieldUntil = 0;
   player.burn = null;
   player.slowUntil = 0;
+  player.slowRatio = 0;
+  player.revealUntil = 0;
+  player.cinderCharges = 0;
+  player.cinderUntil = 0;
+  player.towerAggroTeam = null;
+  player.towerAggroUntil = 0;
+  player.displaceImmuneUntil = 0;
   player.bossPowerUntil = 0;
   player.input.moveX = 0;
   player.input.moveY = 0;

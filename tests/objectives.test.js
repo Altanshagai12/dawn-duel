@@ -44,6 +44,7 @@ test('the authoritative lane advances bottom-left to top-right with rotational s
 test('core is invulnerable until tower falls and backdoor damage is reduced', () => {
   const { world, blue } = playingWorld();
   const core = world.structures.redCore;
+  Object.assign(blue, { x: core.x - 150, y: core.y });
   applyDamage(world, core, 1000, 'basic', blue.id);
   assert.equal(core.hp, core.maxHp);
   world.structures.redTower.hp = 0;

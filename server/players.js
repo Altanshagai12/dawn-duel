@@ -2,7 +2,7 @@ import { MAP, PLAYER } from './config.js';
 import { applyDamage } from './combat.js';
 import { addEffect } from './effects.js';
 import { isPointVisible } from './fog.js';
-import { clampToOwnHalf, isBattlefieldWalkable, isOwnHalf, resolveWalkableMove, spawnPoint, traceWalkableMove } from './geometry.js';
+import { clampToOwnHalf, isOwnHalf, resolveWalkableMove, spawnPoint, traceWalkableMove } from './geometry.js';
 import { HEROES } from './heroes.js';
 import { consumeSkillPress } from './inputs.js';
 import { clamp, distanceSquared, normalize, roundAround, stableSortByDistance } from './math.js';
@@ -51,8 +51,11 @@ function basicAttack(world, player, stats) {
       projectileType = 'flame';
     }
     if (player.cinderCharges > 0 && player.cinderUntil > world.matchTime) {
+      const focus = HEROES.scarlett.skills[1];
       player.cinderCharges -= 1;
-      damage += HEROES.scarlett.skills[1].bonusDamage;
+      damage += focus.bonusDamage * stats.skillDamage;
+      status.slow = focus.slow;
+      status.slowSeconds = focus.slowSeconds;
       projectileType = 'cinder';
     }
   }
@@ -95,16 +98,14 @@ function dash(world, player, skill) {
   const origin = { x: player.x, y: player.y };
   let direction = normalize(player.input.moveX, player.input.moveY, 0, 0);
   if (direction.length === 0) direction = normalize(player.input.aimX, player.input.aimY, 1, 0);
-  const steps = 12;
-  for (let step = 1; step <= steps; step += 1) {
-    const distance = skill.distance * step / steps;
-    const x = clamp(origin.x + direction.x * distance, player.radius, MAP.width - player.radius);
-    const y = clamp(origin.y + direction.y * distance, player.radius, MAP.height - player.radius);
-    if (!isBattlefieldWalkable({ x, y }, player.radius)
-      || blockedByObstacle(world, x, y, player.radius)) break;
-    player.x = x;
-    player.y = y;
-  }
+  const desired = {
+    x: clamp(origin.x + direction.x * skill.distance, player.radius, MAP.width - player.radius),
+    y: clamp(origin.y + direction.y * skill.distance, player.radius, MAP.height - player.radius),
+  };
+  const resolved = traceWalkableMove(origin, desired, player.radius,
+    point => blockedByObstacle(world, point.x, point.y, player.radius));
+  player.x = resolved.x;
+  player.y = resolved.y;
   world.clones.push({
     id: `c${world.nextEntityId++}`,
     kind: 'clone',
@@ -134,8 +135,9 @@ function castSkill(world, player, index, stats, instantIntents) {
       speed: skill.projectileSpeed, radius: 11, status: { reveal: 2.5 },
     });
   } else if (skill.id === 'volley') {
-    for (let i = -1; i <= 1; i += 1) fire(world, player, angle + i * skill.spread, skill.damage * stats.skillDamage, {
+    for (let i = 0; i < skill.count; i += 1) fire(world, player, angle + (i - (skill.count - 1) / 2) * skill.spread, skill.damage * stats.skillDamage, {
       damageClass: 'skill', projectileType: 'volley', range: skill.range, radius: 7,
+      status: { slow: skill.slow, slowSeconds: skill.slowSeconds },
     });
   } else if (skill.id === 'aegis') {
     player.shield = Math.max(player.shield, skill.shield);
@@ -147,6 +149,7 @@ function castSkill(world, player, index, stats, instantIntents) {
   } else if (skill.id === 'emberLine') {
     fire(world, player, angle, skill.damage * stats.skillDamage, {
       damageClass: 'skill', projectileType: 'emberLine', range: skill.range, radius: 15,
+      pierces: skill.pierces,
       status: { burnDps: skill.burnDps * stats.skillDamage, burnSeconds: skill.burnSeconds },
     });
   } else if (skill.id === 'cinderFocus') {
@@ -172,13 +175,13 @@ function resolveInstantIntents(world, intents) {
     addEffect(world, 'repulse', { ...source, team: intent.player.team, radius: intent.skill.radius }, 0.45);
   }
   for (const hit of hits) {
-    applyDamage(world, hit.target, hit.damage, 'skill', hit.player.id, {
+    hit.dealt = applyDamage(world, hit.target, hit.damage, 'skill', hit.player.id, {
       slow: hit.skill.slow, slowSeconds: hit.skill.slowSeconds,
     });
   }
   for (const hit of hits) {
     const target = hit.target;
-    if (target.kind !== 'player' || target.spiritUntil > world.matchTime
+    if (hit.dealt <= 0 || target.kind !== 'player' || target.spiritUntil > world.matchTime
       || world.matchTime < target.displaceImmuneUntil) continue;
     const direction = normalize(
       hit.targetPosition.x - hit.source.x,
@@ -195,11 +198,13 @@ function resolveInstantIntents(world, intents) {
 }
 
 function updateClone(world, clone, stats) {
-  if (world.matchTime < clone.nextShotAt || clone.shotsLeft <= 0) return;
+  if (clone.hp <= 0 || clone.expiresAt <= world.matchTime
+    || world.matchTime < clone.nextShotAt || clone.shotsLeft <= 0) return;
   const candidates = [
     ...Object.values(world.players).filter(target => target.team !== clone.team && target.spiritUntil <= world.matchTime),
     ...world.minions.filter(target => target.team !== clone.team),
-  ].filter(target => distanceSquared(target, clone) <= 340 ** 2 && isPointVisible(world, clone.team, target));
+  ].filter(target => distanceSquared(target, clone) <= 340 ** 2 && isPointVisible(world, clone.team, target)
+    && !traceWalkableMove(clone, target, 7).blocked);
   const target = stableSortByDistance(candidates, clone)[0];
   if (!target) return;
   const direction = normalize(target.x - clone.x, target.y - clone.y);
@@ -248,10 +253,11 @@ export function updatePlayers(world, dt) {
       x = clamped.x;
       y = clamped.y;
     }
-    const resolved = resolveWalkableMove(player, { x, y }, player.radius,
+    const desired = { x: roundAround(x, MAP.width / 2), y: roundAround(y, MAP.height / 2) };
+    const resolved = resolveWalkableMove(player, desired, player.radius,
       point => blockedByObstacle(world, point.x, point.y, player.radius));
-    player.x = roundAround(resolved.x, MAP.width / 2);
-    player.y = roundAround(resolved.y, MAP.height / 2);
+    player.x = resolved.x;
+    player.y = resolved.y;
     const spawn = spawnPoint(player.team);
     const atFountain = distanceSquared(player, spawn) <= PLAYER.fountainHealRadius ** 2;
     if (atFountain && player.spiritUntil <= world.matchTime

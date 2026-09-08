@@ -169,8 +169,8 @@ test('farm walls are solid except for their visible lane entrances', () => {
 });
 
 test('rendered camp entrance contours are derived from authoritative collision geometry', () => {
-  const source = readFileSync(new URL('../src/game/GameScene.js', import.meta.url), 'utf8');
-  assert.match(source, /campGeometry\(site\)/);
+  const source = readFileSync(new URL('../src/game/TerrainView.js', import.meta.url), 'utf8');
+  assert.match(source, /battlefieldRegions\(\)/);
   assert.doesNotMatch(source, /const gap\s*=\s*\.52/);
   for (const site of MAP.campSites) {
     const geometry = campGeometry(site);

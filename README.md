@@ -24,7 +24,8 @@ coordinates never enter the opponent's iframe.
 ## Game loop
 
 - One diagonal bottom-left → top-right lane, one attacking tower and one
-  attacking core per side, all aligned to an original illustrated battlefield.
+  attacking core per side. Textured walkable ground and blocked forest are
+  clipped from the exact same geometry used by authoritative collision.
 - Five minions per side every 24 seconds; late waves replace a melee unit with
   a siege unit.
 - Two neutral guardians on each half. Defeating both guardians from one half in
@@ -51,15 +52,17 @@ npm install
 npm run dev:web
 ```
 
-Open `http://127.0.0.1:4175` for bot practice. For a real two-client room-runtime
-test, keep the `usionthemobile` repository next to this repository and run:
+Open `http://127.0.0.1:4175` for bot practice. For a real two-client direct-runtime
+test with local signed identities and no platform repository dependency:
 
 ```powershell
-npm run dev:multiplayer
+npm run dev:direct
 ```
 
 Then open `http://127.0.0.1:4176/?player=blue` and
 `http://127.0.0.1:4176/?player=red` in separate windows.
+The older `dev:multiplayer` command remains a hosted-room compatibility harness
+and requires the adjacent `usionthemobile` repository.
 
 ## Verification
 
@@ -99,8 +102,8 @@ room as a no-contest without recording two false losses.
 The four hero atlases, portraits, minion atlases, guardian atlases, and legacy
 ground texture are reused from the owner's Dawn Survivor repository. The
 diagonal battlefield, farm-site decal, tower/core structures, and projectile
-VFX were generated specifically for Dawn Duel. The authoritative collision map
-follows the battlefield's lane and four natural boss clearings. Every corridor,
+VFX were generated specifically for Dawn Duel. The rendered battlefield
+follows the authoritative lane and four boss clearings. Every corridor,
 entrance gap, and wall outline is rendered from the exact geometry shared by
 server movement and client prediction; there are no separate shrine objectives.
 Gameplay code, layout, balance, network model, UI, structures, effects, and

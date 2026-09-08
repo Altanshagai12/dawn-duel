@@ -1,6 +1,7 @@
 import { CAMPS, MAP } from './config.js';
 import { applyDamage } from './combat.js';
 import { addEffect } from './effects.js';
+import { traceWalkableMove } from './geometry.js';
 import { distanceSquared, normalize, roundAround, stableSortByDistance } from './math.js';
 
 function spawnCamp(world, camp) {
@@ -17,14 +18,18 @@ function spawnCamp(world, camp) {
   camp.burn = null;
   camp.pendingStrike = null;
   camp.cycle += 1;
-  world.campProgress[camp.side] = { killerId: null, ids: [] };
+  // Staggered respawns expire only this boss's kill, not a newer kill of its
+  // partner. Both must be defeated before either contribution expires.
+  const progress = world.campProgress[camp.side];
+  progress.ids = progress.ids.filter(id => id !== camp.id);
+  if (!progress.ids.length) progress.killerId = null;
   addEffect(world, 'campSpawn', { x: camp.x, y: camp.y, team: null }, 0.8);
 }
 
 function targetFor(world, camp) {
   const players = Object.values(world.players).filter(player => {
     const engageRadius = Math.max(0, MAP.campPocketRadius - player.radius);
-    return player.spiritUntil <= world.matchTime
+    return player.hp > 0 && player.spiritUntil <= world.matchTime
       && distanceSquared(player, { x: camp.homeX, y: camp.homeY }) <= engageRadius ** 2;
   });
   return players.length ? stableSortByDistance(players, camp)[0] : null;
@@ -63,9 +68,10 @@ function resolveStrike(world, camp, config) {
   if (!strike || world.matchTime < strike.at) return false;
   camp.pendingStrike = null;
   for (const player of Object.values(world.players)) {
-    if (player.spiritUntil > world.matchTime) continue;
+    if (player.hp <= 0 || player.spiritUntil > world.matchTime) continue;
     const radius = strike.radius + player.radius;
-    if (distanceSquared(player, strike) <= radius * radius) {
+    if (distanceSquared(player, strike) <= radius * radius
+      && !traceWalkableMove(strike, player).blocked) {
       applyDamage(world, player, config.damage, 'camp', camp.id, config);
     }
   }

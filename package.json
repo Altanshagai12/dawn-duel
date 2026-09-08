@@ -8,6 +8,7 @@
     "start": "node server/production.js",
     "dev:web": "node scripts/serve.mjs",
     "dev:multiplayer": "node scripts/dev-multiplayer.mjs",
+    "dev:direct": "node scripts/dev-direct.mjs",
     "smoke:multiplayer": "node scripts/smoke-multiplayer.mjs",
     "smoke:direct": "node scripts/smoke-direct.mjs",
     "build:client": "node scripts/build-client.mjs",

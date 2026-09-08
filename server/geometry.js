@@ -47,7 +47,7 @@ export function campGeometry(site, radius = 0) {
   return { pocketRadius, pathRadius, route, angle, halfGap, wallStartDistance };
 }
 
-function segmentDistanceSquared(point, start, end) {
+export function segmentDistanceSquared(point, start, end) {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
   const length2 = dx * dx + dy * dy;
@@ -58,25 +58,44 @@ function segmentDistanceSquared(point, start, end) {
   return (point.x - x) ** 2 + (point.y - y) ** 2;
 }
 
+const REGIONS = Object.freeze([
+  {
+    kind: 'capsule', surface: 'lane', radius: MAP.laneWidth / 2,
+    start: { x: MAP.blueCoreX, y: MAP.blueCoreY },
+    end: { x: MAP.redCoreX, y: MAP.redCoreY },
+  },
+  ...MAP.campSites.flatMap(site => {
+    const { route } = campGeometry(site);
+    return [
+      { kind: 'circle', surface: 'camp', side: site.side, x: site.x, y: site.y, radius: MAP.campPocketRadius },
+      ...route.slice(1).map((end, index) => ({
+        kind: 'capsule', surface: 'path', side: site.side,
+        start: route[index], end, radius: MAP.campPathRadius,
+      })),
+    ];
+  }),
+].map(region => Object.freeze(region)));
+
+// Rendering, minimap and every movement/damage trace consume this one union.
+export function battlefieldRegions() { return REGIONS; }
+
+function regionDistanceSquared(point, region) {
+  return region.kind === 'circle'
+    ? (point.x - region.x) ** 2 + (point.y - region.y) ** 2
+    : segmentDistanceSquared(point, region.start, region.end);
+}
+
 export function isBattlefieldWalkable(point, radius = 0) {
-  const start = { x: MAP.blueCoreX, y: MAP.blueCoreY };
-  const end = { x: MAP.redCoreX, y: MAP.redCoreY };
-  const laneRadius = Math.max(0, MAP.laneWidth / 2 - radius);
-  if (segmentDistanceSquared(point, start, end) <= laneRadius ** 2) return true;
-  const connectedToLane = site => {
-    const geometry = campGeometry(site, radius);
-    const inPocket = (point.x - site.x) ** 2 + (point.y - site.y) ** 2 <= geometry.pocketRadius ** 2;
-    if (inPocket) return true;
-    return geometry.route.slice(1).some((end, index) => (
-      segmentDistanceSquared(point, geometry.route[index], end) <= geometry.pathRadius ** 2
-    ));
-  };
-  return MAP.campSites.some(connectedToLane);
+  return REGIONS.some(region => {
+    const clearance = Math.max(0, region.radius - radius);
+    return regionDistanceSquared(point, region) <= clearance ** 2;
+  });
 }
 
 export function resolveWalkableMove(origin, desired, radius = 0, blocked = () => false) {
   const canOccupy = point => isBattlefieldWalkable(point, radius) && !blocked(point);
-  if (canOccupy(desired)) return desired;
+  const canReach = point => canOccupy(point) && !traceWalkableMove(origin, point, radius, blocked).blocked;
+  if (canReach(desired)) return desired;
   const dx = desired.x - origin.x;
   const dy = desired.y - origin.y;
   if (Math.hypot(dx, dy) < 0.0001) return { x: origin.x, y: origin.y };
@@ -89,26 +108,91 @@ export function resolveWalkableMove(origin, desired, radius = 0, blocked = () =>
         x: origin.x + (dx * cos - dy * sin) * scale,
         y: origin.y + (dx * sin + dy * cos) * scale,
       };
-      if (canOccupy(point)) return point;
+      if (canReach(point)) return point;
     }
   }
   return { x: origin.x, y: origin.y };
 }
 
-export function traceWalkableMove(origin, desired, radius = 0, blocked = () => false, stepSize = 8) {
+function circleInterval(origin, delta, center, radius) {
+  const x = origin.x - center.x; const y = origin.y - center.y;
+  const a = delta.x * delta.x + delta.y * delta.y;
+  const b = x * delta.x + y * delta.y;
+  const discriminant = b * b - a * (x * x + y * y - radius * radius);
+  if (discriminant < 0) return null;
+  const root = Math.sqrt(discriminant);
+  const start = Math.max(0, (-b - root) / a);
+  const end = Math.min(1, (-b + root) / a);
+  return start <= end ? [start, end] : null;
+}
+
+function capsuleIntervals(origin, delta, region, radius) {
+  const x = region.end.x - region.start.x; const y = region.end.y - region.start.y;
+  const length = Math.hypot(x, y);
+  const intervals = [circleInterval(origin, delta, region.start, radius), circleInterval(origin, delta, region.end, radius)];
+  if (!length) return intervals;
+  const nx = x / length; const ny = y / length;
+  const ox = origin.x - region.start.x; const oy = origin.y - region.start.y;
+  let start = 0; let end = 1;
+  for (const [position, velocity, low, high] of [
+    [ox * nx + oy * ny, delta.x * nx + delta.y * ny, 0, length],
+    [-ox * ny + oy * nx, -delta.x * ny + delta.y * nx, -radius, radius],
+  ]) {
+    if (Math.abs(velocity) < 1e-10) {
+      if (position < low || position > high) return intervals;
+    } else {
+      const a = (low - position) / velocity; const b = (high - position) / velocity;
+      start = Math.max(start, Math.min(a, b));
+      end = Math.min(end, Math.max(a, b));
+      if (start > end) return intervals;
+    }
+  }
+  intervals.push([start, end]);
+  return intervals;
+}
+
+function terrainFraction(origin, delta, radius) {
+  const desired = { x: origin.x + delta.x, y: origin.y + delta.y };
+  // Most movement stays inside one convex lane/corridor. Avoid allocating an
+  // interval union for that common case in the 30 Hz server loop.
+  if (REGIONS.some(region => {
+    const clearance2 = Math.max(0, region.radius - radius) ** 2;
+    return regionDistanceSquared(origin, region) <= clearance2
+      && regionDistanceSquared(desired, region) <= clearance2;
+  })) return 1;
+  const intervals = REGIONS.flatMap(region => {
+    const clearance = Math.max(0, region.radius - radius);
+    return region.kind === 'circle' ? [circleInterval(origin, delta, region, clearance)]
+      : capsuleIntervals(origin, delta, region, clearance);
+  }).filter(Boolean).sort((a, b) => a[0] - b[0]);
+  let covered = 0;
+  for (const [start, end] of intervals) {
+    if (start > covered + 1e-9) break;
+    covered = Math.max(covered, end);
+    if (covered >= 1) break;
+  }
+  return covered;
+}
+
+export function traceWalkableMove(origin, desired, radius = 0, blocked = null, stepSize = 8) {
   const dx = desired.x - origin.x;
   const dy = desired.y - origin.y;
   const distance = Math.hypot(dx, dy);
   if (distance < 0.0001) return { x: origin.x, y: origin.y, fraction: 1, blocked: false };
-  const steps = Math.max(1, Math.ceil(distance / Math.max(1, stepSize)));
+  // Intersect the full movement segment with the union. Sampling terrain can
+  // skip a thin wall and can even give mirrored shots different sample counts.
+  const terrain = terrainFraction(origin, { x: dx, y: dy }, radius);
+  const limit = terrain < 1 ? Math.max(0, terrain - 1e-7) : 1;
+  if (!blocked) return { x: origin.x + dx * limit, y: origin.y + dy * limit, fraction: limit, blocked: terrain < 1 };
+  const steps = Math.max(1, Math.ceil(distance * limit / Math.max(1, stepSize) - 1e-9));
   let last = { x: origin.x, y: origin.y, fraction: 0, blocked: false };
   for (let step = 1; step <= steps; step += 1) {
-    const fraction = step / steps;
+    const fraction = limit * step / steps;
     const point = { x: origin.x + dx * fraction, y: origin.y + dy * fraction };
-    if (!isBattlefieldWalkable(point, radius) || blocked(point)) return { ...last, blocked: true };
+    if (blocked(point)) return { ...last, blocked: true };
     last = { ...point, fraction, blocked: false };
   }
-  return last;
+  return { ...last, blocked: terrain < 1 };
 }
 
 export function formationPoint(team, advance, offset = 0) {

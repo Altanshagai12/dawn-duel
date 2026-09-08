@@ -147,3 +147,29 @@ test('failed initial connection preserves the room for an explicit retry', async
   assert.equal(attempts, 2);
   delete global.window;
 });
+
+test('a final snapshot disconnects intentionally and preserves results without reconnect errors', async () => {
+  const handlers = {}, snapshots = [], statuses = [];
+  let disconnects = 0, connects = 0;
+  const game = new Proxy({
+    disconnect() { disconnects++; handlers.onDisconnect?.(); },
+    connectDirect() { connects++; },
+  }, { get(target, key) {
+    if (String(key).startsWith('on')) return callback => { handlers[key] = callback; return () => {}; };
+    return target[key];
+  } });
+  global.window = { parent: {}, Usion: { game } };
+  try {
+    const session = new PlatformSession();
+    session.onSnapshot(snapshot => snapshots.push(snapshot));
+    session.onStatus(status => statuses.push(status));
+    handlers.onJoined({});
+    handlers.onRealtime({ event: 'duel_snapshot', data: { you: 'p1', players: {}, match: { phase: 'finished', paused: true } } });
+    handlers.onConnectionError({ message: 'Room expired' }); handlers.onReconnected();
+    await session.retry();
+    assert.equal(disconnects, 1); assert.equal(connects, 0);
+    assert.equal(snapshots.at(-1).match.phase, 'finished');
+    assert.deepEqual(statuses, ['ready']); assert.equal(session.connected, false);
+    assert.equal(session.command('ready'), false);
+  } finally { delete global.window; }
+});

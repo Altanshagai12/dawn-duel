@@ -36,8 +36,17 @@ export function applyInput(world, playerId, data) {
   const skill1 = data.skill1 === true;
   const skill2 = data.skill2 === true;
   const canAct = world.phase === 'playing' && !world.paused && player.spiritUntil <= world.matchTime;
-  player.input.queuedSkill1 ||= canAct && skill1 && !player.input.skill1;
-  player.input.queuedSkill2 ||= canAct && skill2 && !player.input.skill2;
+  const pressed = (key, held) => {
+    const counter = data[`${key}Press`];
+    if (counter === undefined) return held && !player.input[key]; // Existing clients.
+    if (!Number.isSafeInteger(counter) || counter < 0) return false;
+    const previous = player.input[`${key}Press`] || 0;
+    player.input[`${key}Press`] = Math.max(previous, counter);
+    return counter > previous;
+  };
+  const press1 = pressed('skill1', skill1), press2 = pressed('skill2', skill2);
+  player.input.queuedSkill1 ||= canAct && press1;
+  player.input.queuedSkill2 ||= canAct && press2;
   player.input.seq = seq;
   player.input.moveX = move.x * move.length;
   player.input.moveY = move.y * move.length;
