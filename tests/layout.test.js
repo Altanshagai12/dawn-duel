@@ -7,13 +7,15 @@ import {
 import { PLAYER } from '../server/config.js';
 import { requestLandscapeLock } from '../src/ui/orientation.js';
 
-test('portrait phones are never faked by rotating only the game root', () => {
-  const css = readFileSync(new URL('../styles/responsive.css', import.meta.url), 'utf8');
-  const portrait = css.match(/@media \(orientation: portrait\)[\s\S]*?(?=\n@media|$)/)?.[0] || '';
-
-  assert.doesNotMatch(css, /landscape-fallback/);
-  assert.doesNotMatch(portrait, /#app\s*\{/);
-  assert.doesNotMatch(portrait, /rotate\(/);
+test('the whole game owns landscape from first paint before engine and SDK startup', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../styles/viewport.css', import.meta.url), 'utf8');
+  assert.ok(html.indexOf('styles/viewport.css') < html.indexOf('<body>'));
+  assert.match(css, /@media \(orientation: portrait\)/);
+  assert.match(css, /width: 100dvh/);
+  assert.match(css, /height: 100vw/);
+  assert.match(css, /rotate\(90deg\)/);
+  assert.match(css, /container: game \/ size/);
 });
 
 test('standalone hosts request real landscape orientation when supported', async () => {
@@ -23,7 +25,7 @@ test('standalone hosts request real landscape orientation when supported', async
   assert.equal(await requestLandscapeLock({ orientation: { lock: async () => { throw new Error('denied'); } } }), false);
 });
 
-test('the game never asks the player to rotate after the native host owns orientation', () => {
+test('default landscape does not require a player rotate gate or a native host update', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../styles/base.css', import.meta.url), 'utf8');
   const copy = readFileSync(new URL('../src/ui/i18n.js', import.meta.url), 'utf8');
@@ -53,19 +55,20 @@ test('client prediction mirrors boss power, Swift, slow, and wounded movement mo
   assert.ok(Math.abs(predictionSpeed(player, 20) - boostedAndSlowed * PLAYER.woundedSpeedRatio) < 0.001);
 });
 
-test('short portrait fallback lobbies remain usable on older hosts', () => {
+test('responsive layout uses the logical game viewport even in a portrait host', () => {
   const css = readFileSync(new URL('../styles/responsive.css', import.meta.url), 'utf8');
-  const shortPortrait = css.match(/@media \(orientation: portrait\) and \(max-width: 760px\) and \(max-height: 640px\)[\s\S]*?(?=\n@media|$)/)?.[0] || '';
-  assert.match(shortPortrait, /\.screen\s*\{[^}]*overflow-y:\s*auto/);
-  assert.match(shortPortrait, /\.draft-action\s*\{[^}]*min-height:\s*44px/);
+  assert.doesNotMatch(css, /orientation: portrait|\d+v[wh]/);
+  assert.match(css, /@container game \(max-height: 470px\)/);
+  assert.match(css, /\.select-panel\s*\{[^}]*overflow:\s*auto/);
+  assert.match(css, /\.draft-action\s*\{[^}]*min-height:\s*42px/);
 });
 
 test('short landscape gameplay has a dedicated wide-screen HUD layout', () => {
   const css = readFileSync(new URL('../styles/responsive.css', import.meta.url), 'utf8');
-  const landscape = css.match(/@media \(orientation: landscape\) and \(max-height: 520px\)[\s\S]*?(?=\n@media|$)/)?.[0] || '';
+  const landscape = css.match(/@container game \(max-height: 520px\)[\s\S]*?(?=\n@media|$)/)?.[0] || '';
   assert.match(landscape, /#minimap\s*\{[^}]*aspect-ratio:\s*16\s*\/\s*9/);
   assert.match(landscape, /\.action-cluster\s*\{[^}]*var\(--safe-right\)/);
-  assert.match(landscape, /\.player-bars\s*\{[^}]*32vw/);
+  assert.match(landscape, /\.player-bars\s*\{[^}]*32cqw/);
 });
 
 test('the client contains no standalone buff shrine renderer or HUD copy', () => {
@@ -79,6 +82,6 @@ test('the client contains no standalone buff shrine renderer or HUD copy', () =>
 
 test('production loads one versioned client bundle so stale modules cannot mix', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  assert.match(html, /<script type="module" src="\.\/app\.v4\.js"><\/script>/);
+  assert.match(html, /<script type="module" src="\.\/app\.v5\.js"><\/script>/);
   assert.doesNotMatch(html, /src="\.\/src\/main\.js"/);
 });

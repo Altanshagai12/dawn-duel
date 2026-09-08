@@ -6,8 +6,10 @@ function bindStick(root, enabled, onMove, onRelease) {
   let pointer = null;
   const move = event => {
     const rect = root.getBoundingClientRect();
-    const dx = event.clientX - rect.left - rect.width / 2;
-    const dy = event.clientY - rect.top - rect.height / 2;
+    const { x: dx, y: dy } = gameVectorFromClient({
+      x: event.clientX - rect.left - rect.width / 2,
+      y: event.clientY - rect.top - rect.height / 2,
+    });
     const radius = rect.width * .34;
     const scale = Math.min(1, radius / (Math.hypot(dx, dy) || 1));
     knob.style.transform = `translate(${dx * scale}px, ${dy * scale}px)`;
@@ -62,7 +64,7 @@ export class InputController {
     });
     button.addEventListener('pointermove', event => {
       if (!gesture || gesture.pointer !== event.pointerId) return;
-      const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y;
+      const { x: dx, y: dy } = gameVectorFromClient({ x: event.clientX - gesture.x, y: event.clientY - gesture.y });
       const length = Math.hypot(dx, dy);
       gesture.cancel = length > 150;
       if (length > 9) { this.state.aimX = dx / length; this.state.aimY = dy / length; }
@@ -107,6 +109,9 @@ export class InputController {
       update();
     });
     addEventListener('blur', () => { this.reset(); this.flush(); });
+    for (const type of ['resize', 'orientationchange']) {
+      addEventListener(type, () => { this.reset(); this.flush(); }, { passive: true });
+    }
     document.addEventListener('visibilitychange', () => { if (document.hidden) { this.reset(); this.flush(); } });
   }
 
@@ -138,3 +143,4 @@ export class InputController {
     this.seq += 1; this.send({ seq: this.seq, ...this.state });
   }
 }
+import { gameVectorFromClient } from '../ui/orientation.js';

@@ -1,6 +1,6 @@
 .hud { position: absolute; inset: 0; z-index: 10; pointer-events: none; }
 .topbar { position: absolute; top: max(8px, var(--safe-top)); left: 50%; display: flex; align-items: center; transform: translateX(-50%); }
-.team-status { width: clamp(150px, 24vw, 290px); height: 46px; padding: 7px 13px; background: rgba(4,14,15,.82); border: 1px solid var(--line); }
+.team-status { width: clamp(150px, 24cqw, 290px); height: 46px; padding: 7px 13px; background: rgba(4,14,15,.82); border: 1px solid var(--line); }
 .team-status span, .team-status b { font-size: 9px; letter-spacing: .12em; }
 .team-status span { display: inline-block; max-width: 75%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .team-status b { float: right; color: var(--muted); }
@@ -15,7 +15,7 @@
 .network.online i { background: #60ef9a; }
 .network.poor i { background: var(--red); }
 #minimap { position: absolute; top: max(100px, calc(var(--safe-top) + 92px)); left: max(10px, var(--safe-left)); width: 168px; height: 94px; border: 1px solid var(--line); background: rgba(2,10,11,.82); box-shadow: 0 10px 30px rgba(0,0,0,.3); }
-.player-bars { position: absolute; left: 50%; bottom: max(15px, var(--safe-bottom)); width: min(310px, 36vw); padding: 9px 12px; transform: translateX(-50%); background: rgba(4,14,15,.82); border: 1px solid var(--line); }
+.player-bars { position: absolute; left: 50%; bottom: max(15px, var(--safe-bottom)); width: min(310px, 36cqw); padding: 9px 12px; transform: translateX(-50%); background: rgba(4,14,15,.82); border: 1px solid var(--line); }
 .player-bars div { display: flex; justify-content: space-between; font-size: 9px; letter-spacing: .08em; }
 .player-bars b { color: var(--muted); font-weight: 600; }
 .player-bars > i { height: 7px; }
@@ -48,7 +48,7 @@
 .skill.is-aiming { border-color: var(--blue); box-shadow: 0 0 16px #4ee6e055; }
 .skill.is-cancelling { border-color: var(--red); box-shadow: 0 0 16px #ff6b7255; }
 
-.choice-stack { position: absolute; z-index: 25; top: max(168px, calc(var(--safe-top) + 160px)); right: max(10px, var(--safe-right)); width: min(292px, 34vw); display: grid; gap: 8px; pointer-events: none; }
+.choice-stack { position: absolute; z-index: 25; top: max(168px, calc(var(--safe-top) + 160px)); right: max(10px, var(--safe-right)); width: min(292px, 34cqw); display: grid; gap: 8px; pointer-events: none; }
 .choice-tray { position: relative; width: 100%; padding: 9px; border: 1px solid rgba(245,198,106,.4); background: rgba(4,14,15,.92); box-shadow: 0 14px 36px rgba(0,0,0,.4); backdrop-filter: blur(12px); pointer-events: auto; animation: choice-in .22s ease-out; }
 .choice-tray > p { margin: 0 0 7px; color: var(--gold); font-size: 8px; font-weight: 900; letter-spacing: .16em; }
 .choice-tray > p span { float: right; min-width: 20px; text-align: center; color: #071010; background: var(--gold); border-radius: 10px; }

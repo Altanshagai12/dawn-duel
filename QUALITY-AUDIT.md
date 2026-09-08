@@ -52,7 +52,7 @@ unbounded stat growth. Five minions spawn per side every24s; relics last45s.
 
 ## Verification and honest limits
 
-- `npm run check`: 138 unit/regression tests, client/server builds, 24 asset
+- `npm run check`: 144 unit/regression tests, client/server builds, 24 asset
   checks, SDK contract check and real signed-token direct-WebSocket smoke.
 - Balance simulations: all16 bot matchups complete by10minutes; team-swapped
   stationary duels stay within225HP survivor margin. Complete contested
@@ -65,8 +65,17 @@ unbounded stat growth. Five minions spawn per side every24s; relics last45s.
 - Independent critic re-reviewed combat, navigation, progression, input,
   fog/security and lifecycle/UI findings. No remaining P0/P1/P2 in that reviewed
   scope; this does not prove absence of all defects.
-- Generic Usion native launch changes pass56 focused tests and TypeScript.
-  Default landscape requires the orientation-capable native app release; a web
-  game update cannot rotate an older installed host's portrait-locked screen.
-  Physical iOS/Android device and human competitive playtesting remain necessary.
+- Game-owned landscape follow-up: first-paint CSS rotates boot, lobby and gameplay
+  together in a portrait frame, like Dawn Survivor. Native Usion chrome is not
+  rotated or modified. Logical client dimensions drive camera and sharp canvas
+  backing pixels; minimap, pointer aiming, joystick and skill vectors agree.
+  No browser lock, native release, SDK or registry change is required.
+- Follow-up browser QA: 390×700 portrait becomes logical700×390; switching to
+  700×390 landscape preserves the same aspect and controls. Rotated move/skill
+  drag casts successfully. 320×568 portrait has four compact hero cards, a visible
+  Ready/Start footer and non-overlapping HP/skill controls. Two signed-token
+  browser clients completed guest Ready → host Start → live play from this lobby.
+  A suspended local harness guest required a reload; the production transport
+  was not changed. Full direct smoke separately verifies simultaneous reconnect.
+- Physical iOS/Android device and human competitive playtesting remain necessary.
   Automated tests and critic review are not an “AAA” certification.

@@ -14,6 +14,14 @@ opens that exact invite card, and both players choose a hero. The guest confirms
 Ready, then the host starts the three-second countdown. The draft footer shows
 joined, selected, ready, and host state explicitly.
 
+The game opens in landscape from its first loading frame, including inside a
+portrait-locked Usion WebView, like Dawn Survivor. The whole game root rotates
+clockwise when the frame is portrait; native Usion chrome remains untouched.
+Canvas/camera/minimap use untransformed logical dimensions and bounded high-DPI
+backing pixels; joystick, skill drag and pointer aiming invert that rotation.
+Real landscape frames render normally. This requires no native app release or
+registry/SDK changes. All game source, assets, tests and deployment stay here.
+
 The authoritative simulation runs on the game's dedicated direct-mode server,
 authenticated with Usion's short-lived signed room tokens. Clients send
 normalized input only; movement, hits, damage, XP, cooldowns, fog visibility,

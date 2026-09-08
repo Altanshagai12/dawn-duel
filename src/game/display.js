@@ -32,17 +32,15 @@ export function cameraZoomForDisplay(metrics) {
 }
 
 export function displayMetricsForElement(element, windowRef = globalThis.window) {
-  const rect = element?.getBoundingClientRect?.() || {};
   return createDisplayMetrics(
-    rect.width || windowRef?.innerWidth || 1,
-    rect.height || windowRef?.innerHeight || 1,
+    element?.clientWidth || windowRef?.innerWidth || 1,
+    element?.clientHeight || windowRef?.innerHeight || 1,
     windowRef?.devicePixelRatio || 1,
   );
 }
 
 export function prepareCanvas(canvas, requestedRatio = globalThis.devicePixelRatio || 1) {
-  const rect = canvas.getBoundingClientRect();
-  const metrics = createDisplayMetrics(rect.width || canvas.width, rect.height || canvas.height, requestedRatio);
+  const metrics = createDisplayMetrics(canvas.clientWidth || canvas.width, canvas.clientHeight || canvas.height, requestedRatio);
   if (canvas.width !== metrics.renderWidth || canvas.height !== metrics.renderHeight) {
     canvas.width = metrics.renderWidth;
     canvas.height = metrics.renderHeight;

@@ -4,6 +4,7 @@ import { cameraZoomForDisplay, displayMetricsForElement } from './display.js';
 import { MAP } from '../../server/config.js';
 import { createTerrain } from './TerrainView.js';
 import { AimView } from './AimView.js';
+import { bindCanvasPointer } from './canvasPointer.js';
 
 const SHEETS = {
   shana: [181, 181, './assets/heroes/shana.webp'],
@@ -47,17 +48,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   bindPointer() {
-    this.input.on('pointermove', pointer => {
-      if (pointer.event?.pointerType === 'mouse') this.bridge.aim(pointer.worldX, pointer.worldY);
-    });
-    this.input.on('pointerdown', pointer => {
-      if (pointer.event?.pointerType === 'mouse' && pointer.leftButtonDown()) {
-        this.bridge.aim(pointer.worldX, pointer.worldY); this.bridge.attack(true);
-      }
-    });
-    this.input.on('pointerup', pointer => {
-      if (pointer.event?.pointerType === 'mouse') this.bridge.attack(false);
-    });
+    const cleanup = bindCanvasPointer(this.game.canvas, this.cameras.main, this.bridge);
+    this.events.once('shutdown', cleanup);
   }
 
   setDisplay(metrics) {
@@ -109,8 +101,7 @@ export function createGameBridge() {
     backgroundColor: '#071010',
     render: { antialias: true, pixelArt: false, roundPixels: false },
     scale: {
-      mode: Phaser.Scale.FIT,
-      autoCenter: Phaser.Scale.CENTER_BOTH,
+      mode: Phaser.Scale.NONE,
       width: display.renderWidth,
       height: display.renderHeight,
     },
@@ -123,7 +114,7 @@ export function createGameBridge() {
     bridge.setDisplay(next);
     if (key === lastSize) return;
     lastSize = key;
-    game.scale.setGameSize(next.renderWidth, next.renderHeight);
+    game.scale.resize(next.renderWidth, next.renderHeight);
   };
   const observer = globalThis.ResizeObserver ? new ResizeObserver(resize) : null;
   observer?.observe(container);
