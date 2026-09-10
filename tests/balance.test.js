@@ -40,8 +40,10 @@ function simulateDuel(blueHero, redHero, range = 400) {
     for (const player of [blue, red]) {
       const rival = player === blue ? red : blue;
       const direction = normalize(rival.x - player.x, rival.y - player.y);
+      const closeGap = Math.hypot(rival.x - player.x, rival.y - player.y) > 220;
       applyInput(world, player.id, {
-        seq: tick, moveX: 0, moveY: 0, aimX: direction.x, aimY: direction.y, attack: true,
+        seq: tick, moveX: closeGap ? direction.x : 0, moveY: closeGap ? direction.y : 0,
+        aimX: direction.x, aimY: direction.y, attack: true, attackMode: 'auto', skill1Auto: true, skill2Auto: true,
         skill1: world.matchTime >= player.skillReady[0],
         skill2: world.matchTime >= player.skillReady[1],
       });
@@ -110,6 +112,12 @@ test('all hero matchups conclude by ten minutes without team-order bias', () => 
   for (const result of outcomes.filter(item => item.blue === item.red)) {
     assert.equal(result.winner, null, `mirror result ${JSON.stringify(result)}`);
   }
+  for (const hero of HEROES) {
+    const matches = outcomes.filter(result => result.blue !== result.red && (result.blue === hero || result.red === hero));
+    const wins = matches.filter(result => result.winner !== null && (result.winner === 0 ? result.blue : result.red) === hero).length;
+    const losses = matches.filter(result => result.winner !== null && (result.winner === 0 ? result.blue : result.red) !== hero).length;
+    assert.ok(wins > 0 && losses > 0, `${hero} must have both a matchup strength and a counter (${wins}W/${losses}L)`);
+  }
   for (const blue of HEROES) for (const red of HEROES) {
     if (blue >= red) continue;
     const forward = outcomes.find(result => result.blue === blue && result.red === red);
@@ -121,7 +129,7 @@ test('all hero matchups conclude by ten minutes without team-order bias', () => 
   }
 });
 
-test('stationary combat stays symmetric with bounded hero matchup margins', () => {
+test('auto-target duels with re-engagement stay symmetric with bounded hero matchup margins', () => {
   for (const range of [140, 250, 400]) for (const blue of HEROES) for (const red of HEROES) {
     const result = simulateDuel(blue, red, range);
     if (process.env.BALANCE_REPORT) console.info('duel', blue, red, JSON.stringify(result));
@@ -176,8 +184,8 @@ test('a low-health bot reaches its fountain, heals, then rejoins the lane', () =
   assert.equal(rejoined, true);
 });
 
-test('contested boss trades preserve full state after swapping Diamond and Hina sides', () => {
-  const matches = [['diamond', 'hina'], ['hina', 'diamond']].map(heroes => {
+for (const heroes of [['diamond', 'hina'], ['scarlett', 'hina']]) test(`full ${heroes.join('/')} matches preserve state after swapping sides`, () => {
+  const matches = [heroes, [...heroes].reverse()].map(heroes => {
     const world = createWorld(20260904);
     addPlayer(world, 'blue'); addPlayer(world, 'red');
     world.playerOrder.forEach((id, index) => applyCommand(world, id, 'select_hero', { hero: heroes[index] }));

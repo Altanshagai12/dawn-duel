@@ -4,6 +4,7 @@ import { traceWalkableMove } from './geometry.js';
 import { clamp, distanceSquared, normalize, round } from './math.js';
 import { awardXp, heroKillXp, offerRelic } from './progression.js';
 import { resetPlayerAtFountain } from './world.js';
+import { HEROES } from './heroes.js';
 
 export function findEntity(world, id) {
   return world.players[id]
@@ -62,6 +63,11 @@ function damagePlayer(world, target, amount, damageClass, sourceId) {
   adjusted = Math.max(0.01, round(adjusted, 100));
   const shieldSource = target.shieldSource;
   const absorbed = Math.min(target.shield, adjusted);
+  if (shieldSource === 'aegis' && absorbed > 0 && target.hero === 'diamond') {
+    const skill = HEROES.diamond.skills[0];
+    target.riposteDamage = Math.min(skill.riposteCap, (target.riposteDamage || 0) + absorbed * skill.riposteRatio);
+    target.riposteUntil = Math.max(target.riposteUntil, world.matchTime + skill.riposteSeconds);
+  }
   target.shield = Math.max(0, target.shield - absorbed);
   if (absorbed > 0 && target.shield <= 0) {
     target.shieldSource = null;
@@ -168,6 +174,15 @@ function pushTarget(world, target, sourceId, distance) {
 
 export function applyDamage(world, target, amount, damageClass, sourceId, status = {}, origin) {
   if (!target || target.hp <= 0 || !Number.isFinite(amount) || amount <= 0) return 0;
+  if (target.kind === 'player' && (target.spiritUntil > world.matchTime || target.protectUntil > world.matchTime)) return 0;
+  if (status.consumeMark && target.precisionMark?.sourceId === sourceId && target.precisionMark.until > world.matchTime) {
+    amount += target.precisionMark.damage;
+    target.precisionMark = null;
+    addEffect(world, 'markConsume', { x: target.x, y: target.y, team: entityTeam(world, sourceId) }, .35);
+  }
+  if (status.missingHpRatio && target.kind !== 'tower' && target.kind !== 'core') {
+    amount += Math.min(status.missingHpCap, Math.max(0, target.maxHp - target.hp) * status.missingHpRatio);
+  }
   const impact = { x: target.x, y: target.y };
   const deathsBefore = target.kind === 'player' ? target.deaths : 0;
   let dealt = 0;
@@ -193,6 +208,9 @@ export function applyDamage(world, target, amount, damageClass, sourceId, status
     target.slowUntil = Math.max(target.slowUntil, world.matchTime + Math.min(1.5, status.slowSeconds || 0));
   }
   if (status.reveal && target.kind === 'player') target.revealUntil = Math.max(target.revealUntil, world.matchTime + status.reveal);
+  if (status.markSeconds && !['tower', 'core'].includes(target.kind)) {
+    target.precisionMark = { sourceId, until: world.matchTime + status.markSeconds, damage: status.markDamage };
+  }
   if (status.knockback) pushTarget(world, target, sourceId, Math.min(100, status.knockback));
   if (status.burnDps && target.kind !== 'tower' && target.kind !== 'core') {
     const dps = status.burnDps;

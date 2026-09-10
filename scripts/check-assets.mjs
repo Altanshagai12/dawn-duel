@@ -7,6 +7,8 @@ const files = [
   'assets/map/dawnfall-lane.webp', 'assets/map/dawnfall-lane-v2.webp', 'assets/map/dawnfall-lane-v3.png', 'assets/map/farm-site.webp',
   'assets/structures/tower.webp', 'assets/structures/core.webp', 'assets/effects/arc-bolt.webp',
   'assets/map/flagstone-material.png', 'assets/map/forest-material.png',
+  'assets/guardians/eclipse-attack-v7.webp', 'assets/guardians/stag-attack-v7.webp',
+  'assets/map/arena-floor-v7.webp', 'assets/map/arena-forest-v7.webp', 'assets/effects/skill-atlas-v7.webp',
 ];
 for (const file of files) {
   const info = await stat(file);

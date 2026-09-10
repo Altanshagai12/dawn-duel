@@ -1,5 +1,6 @@
 import { CAMPS, PLAYER, RELICS, UPGRADES, XP_THRESHOLDS } from './config.js';
 import { seededOrder } from './random.js';
+import { HEROES } from './heroes.js';
 
 const CHOICE_SECONDS = 12;
 
@@ -8,13 +9,14 @@ export function derivedStats(player, now = 0) {
   const bossPower = (player.bossPowerUntil || 0) > now;
   const damageBonus = bossPower ? CAMPS.powerDamageBonus : 0;
   const speedBonus = bossPower ? CAMPS.powerSpeedBonus : 0;
+  const cinderSpeed = player.hero === 'scarlett' && player.cinderUntil > now ? HEROES.scarlett.skills[1].speedBonus : 0;
   return {
     maxHp: PLAYER.hp + rank('vitality') * UPGRADES.vitality.amount,
     basicDamage: PLAYER.attackDamage * (1 + Math.min(0.2, rank('edge') * UPGRADES.edge.amount + damageBonus)),
     skillDamage: 1 + Math.min(0.23, rank('arcana') * UPGRADES.arcana.amount + damageBonus),
     basicReduction: Math.min(0.08, rank('guard') * UPGRADES.guard.amount),
     skillReduction: Math.min(0.08, rank('ward') * UPGRADES.ward.amount),
-    speed: PLAYER.speed * (1 + Math.min(0.14, rank('swift') * UPGRADES.swift.amount + speedBonus)),
+    speed: PLAYER.speed * (1 + Math.min(0.14, rank('swift') * UPGRADES.swift.amount + speedBonus)) * (1 + cinderSpeed),
     cooldown: 1 - Math.min(0.08, rank('haste') * UPGRADES.haste.amount),
   };
 }

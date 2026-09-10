@@ -5,11 +5,12 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
   <meta name="theme-color" content="#081414">
   <title>Dawn Duel</title>
-  <link rel="stylesheet" href="./styles/base.css?v=6">
-  <link rel="stylesheet" href="./styles/viewport.css?v=6">
-  <link rel="stylesheet" href="./styles/hud.css?v=6">
-  <link rel="stylesheet" href="./styles/fire-feedback.css?v=6">
-  <link rel="stylesheet" href="./styles/responsive.css?v=6">
+  <link rel="stylesheet" href="./styles/base.css?v=7">
+  <link rel="stylesheet" href="./styles/viewport.css?v=7">
+  <link rel="stylesheet" href="./styles/hud.css?v=7">
+  <link rel="stylesheet" href="./styles/fire-feedback.css?v=7">
+  <link rel="stylesheet" href="./styles/responsive.css?v=7">
+  <link rel="stylesheet" href="./styles/combat-controls.css?v=7">
 </head>
 <body>
   <main id="app">
@@ -82,9 +83,21 @@
     <div id="controls" class="controls is-hidden">
       <div id="move-stick" class="stick"><i></i><span id="move-copy">MOVE</span></div>
       <div class="action-cluster">
-        <button id="skill-1" class="skill" type="button"><b>Q</b><span id="skill-1-name">SKILL</span><i></i></button>
-        <button id="skill-2" class="skill" type="button"><b>E</b><span id="skill-2-name">SKILL</span><i></i></button>
-        <div id="aim-stick" class="stick stick--aim"><i></i><span id="fire-copy">FIRE</span></div>
+        <label class="target-priority"><span id="priority-copy">TARGET</span><select id="target-priority" aria-label="Target priority">
+          <option value="nearest">Nearest</option><option value="lowestHp">Lowest HP</option><option value="lowestRatio">Lowest HP %</option>
+        </select></label>
+        <button id="skill-1" class="skill" type="button" aria-keyshortcuts="Q"><em class="skill-icon" aria-hidden="true"></em><b>Q</b><span id="skill-1-name">SKILL</span><i></i></button>
+        <button id="skill-2" class="skill" type="button" aria-keyshortcuts="E"><em class="skill-icon" aria-hidden="true"></em><b>E</b><span id="skill-2-name">SKILL</span><i></i></button>
+        <button id="attack-structure" class="combat-button attack-special" type="button" aria-pressed="false" aria-label="Attack towers and core only">
+          <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M10 8h7v7h5V8h5v7h5V8h7v15l-5 4v13H15V27l-5-4Z"/><path d="M22 40V29h6v11"/></svg><span id="structure-copy">TOWER</span>
+        </button>
+        <button id="attack-farm" class="combat-button attack-special" type="button" aria-pressed="false" aria-label="Attack minions and bosses only">
+          <svg viewBox="0 0 48 48" aria-hidden="true"><path d="m12 18-5-9 13 7h8l13-7-5 9 1 10-7 11H18L11 28Z"/><path d="m17 23 5 3m9-3-5 3m-6 6h8"/></svg><span id="farm-copy">FARM</span>
+        </button>
+        <button id="aim-stick" class="combat-button attack-main stick--aim" type="button" aria-pressed="false" aria-keyshortcuts="Space" aria-label="Attack; prioritize enemy heroes">
+          <svg viewBox="0 0 64 64" aria-hidden="true"><path d="m18 48 30-30 3-10-10 3-30 30 7 7Z"/><path d="m13 37 14 14M9 55l10-10m14-31 6 6m2 20 13 13m-9-7 5-5M13 10l-3 8 14 14 8-8L18 10Z"/></svg>
+          <span id="fire-copy">ATTACK</span><kbd>SPACE</kbd>
+        </button>
         <small id="skill-guide" class="skill-guide"></small>
       </div>
     </div>
@@ -104,6 +117,6 @@
   </main>
   <script src="https://usions.com/vendor/phaser/4.2.1/phaser.min.js"></script>
   <script src="https://usions.com/usion-sdk.js"></script>
-  <script type="module" src="./app.v6.js"></script>
+  <script type="module" src="./app.v7.js"></script>
 </body>
 </html>

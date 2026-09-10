@@ -4,6 +4,7 @@ import { HEROES } from '../../server/heroes.js';
 import { ChoiceView } from './ChoiceView.js';
 import { drawMinimap } from './Minimap.js';
 import { AnnouncementState, phaseVisibility, teamHud } from './presentation.js';
+import { setClass, setStyle, setText } from './hudDom.js';
 
 const $ = selector => document.querySelector(selector);
 const clamp01 = value => Math.max(0, Math.min(1, Number(value) || 0));
@@ -60,6 +61,13 @@ export class UIController {
     $('#game-guide').textContent = t.guide;
     $('#move-copy').textContent = t.move;
     $('#fire-copy').textContent = t.fire;
+    $('#farm-copy').textContent = t.farm;
+    $('#structure-copy').textContent = t.structure;
+    $('#priority-copy').textContent = t.target;
+    for (const [id, hint] of [['aim-stick', t.attackHint], ['attack-farm', t.farmHint], ['attack-structure', t.structureHint], ['target-priority', t.priorityHint]]) {
+      $(`#${id}`).title = hint; $(`#${id}`).setAttribute('aria-label', hint);
+    }
+    for (const option of $('#target-priority').options) option.textContent = t.priorities[option.value];
     $('#skill-guide').textContent = t.skillGuide;
     if (this.currentHero) this.selectHero(this.currentHero);
     this.updateDraft(this.lastDraft);
@@ -100,8 +108,11 @@ export class UIController {
     $('#hero-kit').textContent = this.t().skillDetails[hero].join('  •  ');
     this.t().skillDetails[hero].forEach((detail, index) => {
       const button = $(`#skill-${index + 1}`);
-      button.title = detail;
-      button.setAttribute('aria-label', detail);
+      button.title = `${detail}\n${this.t().skillGuide}`;
+      button.setAttribute('aria-label', `${names[index]}. ${detail}. ${this.t().skillGuide}`);
+      const cell = ['shana', 'diamond', 'scarlett', 'hina'].indexOf(hero) * 2 + index;
+      button.style.setProperty('--skill-x', `${(cell % 4) * 100 / 3}%`);
+      button.style.setProperty('--skill-y', cell >= 4 ? '100%' : '0%');
     });
   }
 
@@ -194,25 +205,25 @@ export class UIController {
     if (you.hero && you.hero !== this.currentHero) this.selectHero(you.hero);
     this.setPhase(snapshot.match.phase);
     const seconds = Math.floor(snapshot.match.matchTime || 0);
-    $('#clock').textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
-    $('#wave').textContent = `${this.t().wave} ${snapshot.match.wave}`;
-    $('#blue-label').textContent = you.name || this.t().you;
-    $('#red-label').textContent = rival?.name || this.t().rival;
-    $('#blue-level').textContent = `LV ${you.level}`;
-    $('#red-level').textContent = `LV ${rival?.level || 1}`;
-    $('#blue-core').style.width = pct(ownCore.hp / ownCore.maxHp);
-    $('#red-core').style.width = pct(rivalCore.hp / rivalCore.maxHp);
-    $('#objective-status').textContent = `${this.t().nextWave} ${Math.max(0, Math.ceil(snapshot.match.nextWaveAt - snapshot.now))}s · ${this.t().bossPair} ${Math.max(...(you.guardianProgress || [0]))}/2`;
-    $('#hero-name').textContent = this.t().heroes[you.hero]?.[0]?.toUpperCase() || 'HERO';
-    $('#hp-copy').textContent = `${Math.ceil(you.hp)} / ${Math.ceil(you.maxHp)}`;
-    $('#hp-bar').style.width = pct(you.hp / you.maxHp);
-    $('#shield-bar').style.width = pct((you.shield || 0) / you.maxHp);
-    $('#shield-bar').style.left = '0';
-    $('#xp-bar').style.width = pct(xpProgress(you).ratio);
+    setText($('#clock'), `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`);
+    setText($('#wave'), `${this.t().wave} ${snapshot.match.wave}`);
+    setText($('#blue-label'), you.name || this.t().you);
+    setText($('#red-label'), rival?.name || this.t().rival);
+    setText($('#blue-level'), `LV ${you.level}`);
+    setText($('#red-level'), `LV ${rival?.level || 1}`);
+    setStyle($('#blue-core'), 'width', pct(ownCore.hp / ownCore.maxHp));
+    setStyle($('#red-core'), 'width', pct(rivalCore.hp / rivalCore.maxHp));
+    setText($('#objective-status'), `${this.t().nextWave} ${Math.max(0, Math.ceil(snapshot.match.nextWaveAt - snapshot.now))}s · ${this.t().bossPair} ${Math.max(...(you.guardianProgress || [0]))}/2`);
+    setText($('#hero-name'), this.t().heroes[you.hero]?.[0]?.toUpperCase() || 'HERO');
+    setText($('#hp-copy'), `${Math.ceil(you.hp)} / ${Math.ceil(you.maxHp)}`);
+    setStyle($('#hp-bar'), 'width', pct(you.hp / you.maxHp));
+    setStyle($('#shield-bar'), 'width', pct((you.shield || 0) / you.maxHp));
+    setStyle($('#shield-bar'), 'left', '0px');
+    setStyle($('#xp-bar'), 'width', pct(xpProgress(you).ratio));
     const bossPowerRemaining = Math.max(0, Math.ceil((you.bossPowerUntil || 0) - snapshot.now));
     const bossPowerStatus = $('#boss-power-status');
-    bossPowerStatus.textContent = `${this.t().bossPower} · ${bossPowerRemaining}s`;
-    bossPowerStatus.classList.toggle('is-hidden', bossPowerRemaining <= 0);
+    setText(bossPowerStatus, `${this.t().bossPower} · ${bossPowerRemaining}s`);
+    setClass(bossPowerStatus, 'is-hidden', bossPowerRemaining <= 0);
     this.choices.update(you, snapshot.now, this.t(), this.language);
     this.updateCooldowns(you, snapshot.now);
     drawMinimap($('#minimap'), snapshot);
@@ -223,21 +234,26 @@ export class UIController {
   updateCooldowns(player, now) {
     const hero = HEROES[player.hero];
     if (!hero) return;
+    const combatDisabled = player.spiritUntil > now || Boolean(this.lastDraft?.match?.paused);
+    for (const id of ['aim-stick', 'attack-farm', 'attack-structure']) {
+      const button = $(`#${id}`); if (button.disabled !== combatDisabled) button.disabled = combatDisabled;
+    }
     hero.skills.forEach((skill, index) => {
       const button = $(`#skill-${index + 1}`);
       const remaining = Math.max(0, (player.skillReady?.[index] || 0) - now);
-      button.querySelector('i').style.transform = `scaleY(${Math.min(1, remaining / skill.cooldown)})`;
-      button.querySelector('b').textContent = remaining > 0 ? Math.ceil(remaining) : (index ? 'E' : 'Q');
-      button.disabled = remaining > 0 || player.spiritUntil > now || Boolean(this.lastDraft?.match?.paused);
-      button.classList.toggle('on-cooldown', remaining > 0);
+      setStyle(button.querySelector('i'), 'transform', `scaleY(${Math.min(1, remaining / skill.cooldown)})`);
+      setText(button.querySelector('b'), remaining > 0 ? String(Math.ceil(remaining)) : (index ? 'E' : 'Q'));
+      const disabled = remaining > 0 || combatDisabled;
+      if (button.disabled !== disabled) button.disabled = disabled;
+      setClass(button, 'on-cooldown', remaining > 0);
     });
   }
 
   updateAnnouncement(snapshot, player) {
     const text = this.announcements.update(snapshot, player, this.t());
     const node = $('#announcement');
-    node.textContent = text;
-    node.classList.toggle('on', Boolean(text));
+    setText(node, text);
+    setClass(node, 'on', Boolean(text));
   }
 
   showResult(snapshot, you) {

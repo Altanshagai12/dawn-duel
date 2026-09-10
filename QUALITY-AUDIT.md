@@ -1,4 +1,52 @@
-# Gameplay quality audit — 2026-09-08
+# Gameplay quality audit
+
+## Combat v7 — 2026-09-10
+
+- All four heroes have reworked two-skill kits with real server effects:
+  mark/recoil, shield/riposte, telegraphed fire/empowered mobility, and dash/clone/
+  capped missing-health finisher. Base HP and upgrade caps remain unchanged.
+  Current parameters and primary research links: [combat design](docs/combat-v7.md).
+- Large auto attack prioritizes heroes, with exclusive Farm and Tower controls,
+  nearest/lowest-HP/lowest-ratio preferences, quick taps and hold-to-repeat.
+  Tap-auto and drag-manual skills share server vision/range/terrain validation.
+  Actual successful shot category, not resumed held input, drives the button flash.
+- Both players acquire basic targets before either attack removes protection;
+  this fixes a real team-order bias found by full-match mirrored simulation.
+- Every hero has strengths and counters in all16 fixed bot matchups. Maximum
+  survivor margin in the three-range engagement matrix is145HP (unchanged225HP
+  limit). Actual max-upgrade tested combo damage: Shana357, Diamond204, Scarlett488,
+  Hina290 against1500HP. Combos have different durations and are not equal-DPS
+  claims; Scarlett's number includes three empowered basics and burn.
+- Two guardian types now show generated idle/windup/strike/recovery frames tied
+  to actual server attacks. Eight generated skill effects/icons and new map
+  materials are saved in this repo. Geometry remains shared with collision,
+  prediction, fog and minimap; no extra buff shrine objectives were introduced.
+- Fog backing pixels:2,250,000→563,000 (-74.98%). Static minimap geometry is cached,
+  motion samples are reused, unchanged depth/DOM writes are skipped. Minion/tower
+  VFX formerly created10/13 render objects and9/12 tweens per hit; now24 reusable
+  bolts share2 Graphics layers. A100-shot burst creates no further render objects
+  or tweens. Transient shot trails expire in300ms even without another snapshot.
+- Independent critic final review found no P0/P1/P2 blocker in the reviewed
+  combat/map/input/fog/render scope. `npm run check` passed: client/server builds,
+  29 asset checks, SDK contract validation, 210/210 tests and the direct smoke.
+- Real signed-token direct-WebSocket smoke verifies guest-first lobby, Ready/
+  host Start, simultaneous drop/reconnect, third-player rejection, result retry,
+  oversized frames and dropped/coalesced inputs with140–450ms delayed stale
+  samples. Release does not resume movement. These delays are injected at the
+  application-input layer, not a claim of a physical mobile-network test.
+- Browser QA: two signed local clients selected heroes, readied, started and used
+  skills; automatic attack damaged a rival without an aim gesture. Inspected
+  both guardian strike strips and an active Ember Field.844×390/667×320 controls
+  stay separated from upgrades; selected an upgrade and relic during continued
+  combat.390×700 portrait uses a rotated logical700×390 game, without Usion edits.
+  Temporary QA fixtures are excluded from production.
+- Final rebuilt browser fixture exercised clustered minion combat using the new
+  shared-Graphics shot pool, without new runtime errors. Earlier errors in the
+  local test tab came from superseded fixture setup, not the final game build.
+- Physical device performance and human balance playtests remain outstanding.
+  No guaranteed FPS,50% human win rate or AAA certification is claimed.
+
+## Earlier audit — 2026-09-08
 
 ## Resolved defects
 

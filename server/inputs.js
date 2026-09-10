@@ -1,6 +1,7 @@
 import { chooseRelic, chooseUpgrade, rerollUpgrade } from './progression.js';
 import { isHeroId } from './heroes.js';
 import { normalize } from './math.js';
+import { attackMode, targetPriority } from './targeting.js';
 
 export function selectHero(world, playerId, heroId) {
   const player = world.players[playerId];
@@ -45,8 +46,20 @@ export function applyInput(world, playerId, data) {
     return counter > previous;
   };
   const press1 = pressed('skill1', skill1), press2 = pressed('skill2', skill2);
-  player.input.queuedSkill1 ||= canAct && press1;
-  player.input.queuedSkill2 ||= canAct && press2;
+  const capture = (key, edge) => {
+    if (!canAct || !edge || player.input[`queued${key}`]) return;
+    player.input[`queued${key}`] = true;
+    player.input[`queued${key}Context`] = { auto: data[`${key.toLowerCase()}Auto`] === true,
+      aimX: aim.length ? aim.x : player.input.aimX, aimY: aim.length ? aim.y : player.input.aimY };
+  };
+  capture('Skill1', press1); capture('Skill2', press2);
+  const mode = attackMode(data.attackMode), priority = targetPriority(data.targetPriority);
+  if (pressed('attack', data.attack === true) && canAct && !player.input.queuedAttack) {
+    player.input.queuedAttack = { mode: attackMode(data.attackPressMode ?? mode), priority,
+      aimX: aim.length ? aim.x : player.input.aimX, aimY: aim.length ? aim.y : player.input.aimY };
+  }
+  player.input.attackMode = mode;
+  player.input.targetPriority = priority;
   player.input.seq = seq;
   player.input.moveX = move.x * move.length;
   player.input.moveY = move.y * move.length;
@@ -76,8 +89,14 @@ export function applyCommand(world, playerId, type, data = {}) {
 }
 
 export function consumeSkillPress(player, index) {
+  return Boolean(consumeSkillCast(player, index));
+}
+
+export function consumeSkillCast(player, index) {
   const key = index === 0 ? 'queuedSkill1' : 'queuedSkill2';
   const value = player.input[key] === true;
   player.input[key] = false;
-  return value;
+  const context = player.input[`${key}Context`];
+  player.input[`${key}Context`] = null;
+  return value ? context || { auto: false, aimX: player.input.aimX, aimY: player.input.aimY } : null;
 }

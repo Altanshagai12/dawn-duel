@@ -212,6 +212,30 @@ async function verifyHostlessCompatibility() {
   if (resumed.players[second.id]?.host) throw new Error('Token rollout changed live teams');
 }
 
+async function verifyAdverseInputs(client) {
+  const before = client.snapshots.at(-1);
+  // Application-level loss/coalescing and jitter over the real signed WS path.
+  // Samples 3/5 are dropped; delayed 4/6 arrive after the final release (7).
+  const samples = [[0, 2, true], [140, 4, true], [200, 6, true],
+    [240, 7, false], [380, 4, true], [450, 6, true]];
+  await Promise.all(samples.map(([delay, seq, moving]) => new Promise(resolve => {
+    setTimeout(() => {
+      client.command('input', { seq, moveX: moving ? -.88 : 0, moveY: moving ? .47 : 0,
+        aimX: -1, aimY: 0, attack: false, attackMode: 'auto' });
+      resolve();
+    }, delay);
+  })));
+  const stopped = await client.waitFor(snapshot => snapshot.now > before.now + .5,
+    'Jitter profile stopped receiving snapshots');
+  const settled = await client.waitFor(snapshot => snapshot.now > stopped.now + .13,
+    'Jitter profile did not settle');
+  const a = stopped.players[client.id], b = settled.players[client.id];
+  if (Math.hypot(a.x - b.x, a.y - b.y) > .01) {
+    throw new Error('Delayed stale input resumed movement after release');
+  }
+  console.log('[smoke] dropped/coalesced samples and 140–450ms delayed stale inputs preserved release');
+}
+
 let host = new Client('host');
 let guest = new Client('guest');
 const extras = [];
@@ -271,6 +295,8 @@ try {
     3000,
   );
   console.log('[smoke] simultaneous drop preserved state and resumed both players');
+
+  await verifyAdverseInputs(guest);
 
   guest.drop();
   const finished = await host.waitFor(

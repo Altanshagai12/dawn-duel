@@ -6,7 +6,11 @@ export function addEffect(world, kind, data = {}, ttl = 0.35) {
     ...data,
   };
   world.effects.push(effect);
-  if (world.effects.length > 64) world.effects.splice(0, world.effects.length - 64);
+  if (world.effects.length > 64) {
+    // A live ground warning must not vanish merely because a wave fired.
+    const removable = world.effects.findIndex(item => item.kind !== 'cinderZone' || item.expiresAt <= world.matchTime);
+    world.effects.splice(Math.max(0, removable), 1);
+  }
   return effect;
 }
 

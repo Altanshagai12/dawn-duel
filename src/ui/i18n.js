@@ -1,16 +1,37 @@
+import { HEROES } from '../../server/heroes.js';
+
+function skillDetails(language) {
+  const [mark, volley] = HEROES.shana.skills, [aegis, repulse] = HEROES.diamond.skills;
+  const [field, cinder] = HEROES.scarlett.skills, [dash, reap] = HEROES.hina.skills;
+  const percent = value => Math.round(value * 100);
+  if (language === 'mn') return {
+    shana: [`Q: ${mark.damage} гэмтэл · ${mark.markSeconds}s тэмдэг: дараагийн цохилт +${mark.markDamage} · ${mark.cooldown}s`, `E: ${volley.count}×${volley.damage} сум, ${percent(volley.slow)}% удаашрал · ${volley.recoil} зайд ухарна · ${volley.cooldown}s`],
+    diamond: [`Q: ${aegis.duration}s турш ${aegis.shield} бамбай · шингээсэн гэмтлийн ${percent(aegis.riposteRatio)}%, +${aegis.riposteCap} хүртэл хариу цохилт · ${aegis.cooldown}s`, `E: ${repulse.damage} гэмтэлтэй шугам · ${repulse.knockback} зайд түлхэнэ, ${percent(repulse.slow)}% удаашрал · ${repulse.cooldown}s`],
+    scarlett: [`Q: ${field.windup}s анхааруулга → ${field.pulses}×${field.damage} галын бүс · ${percent(field.slow)}% удаашрал · ${field.cooldown}s`, `E: ${cinder.duration}s турш ${percent(cinder.speedBonus)}% хурд · дараагийн ${cinder.charges} сум +${cinder.bonusDamage} · ${cinder.cooldown}s`],
+    hina: [`Q: ${dash.distance} зайд dash · ${dash.cloneSeconds}s хуулбар ${dash.cloneShots}×${dash.cloneDamage} буудна · ${dash.cooldown}s`, `E: ${reap.damage} + алдсан HP-ийн ${percent(reap.missingHpRatio)}% (дээд +${reap.missingHpCap}) · ${percent(reap.slow)}% удаашрал · ${reap.cooldown}s`],
+  };
+  return {
+    shana: [`Q: ${mark.damage} damage · ${mark.markSeconds}s mark: next attack +${mark.markDamage} · ${mark.cooldown}s`, `E: ${volley.count}×${volley.damage} bolts, ${percent(volley.slow)}% slow · recoil ${volley.recoil} units · ${volley.cooldown}s`],
+    diamond: [`Q: ${aegis.shield} shield for ${aegis.duration}s · next attack gains ${percent(aegis.riposteRatio)}% absorbed damage, max +${aegis.riposteCap} · ${aegis.cooldown}s`, `E: ${repulse.damage} damage in a line · ${repulse.knockback}-unit push, ${percent(repulse.slow)}% slow · ${repulse.cooldown}s`],
+    scarlett: [`Q: ${field.windup}s warning → ${field.pulses}×${field.damage} fire field · ${percent(field.slow)}% slow · ${field.cooldown}s`, `E: ${percent(cinder.speedBonus)}% speed for ${cinder.duration}s · next ${cinder.charges} shots +${cinder.bonusDamage} · ${cinder.cooldown}s`],
+    hina: [`Q: ${dash.distance}-unit dash · ${dash.cloneSeconds}s clone fires ${dash.cloneShots}×${dash.cloneDamage} · ${dash.cooldown}s`, `E: ${reap.damage} + ${percent(reap.missingHpRatio)}% missing HP (max +${reap.missingHpCap}) · ${percent(reap.slow)}% slow · ${reap.cooldown}s`],
+  };
+}
+
 export const copy = {
   mn: {
     guide: '1500 HP · Цэргүүдтэйгээ tower → цөмийг нураа. Цэрэг, баатар, босс устгаж XP авна. Нэг талын 2 боссыг унагавал 45s relic сонгоно.',
     practiceRule: 'Баатар сонгомогц 3 секундийн дараа бэлтгэл эхэлнэ',
-    move: 'ХӨДӨЛ', fire: 'БУУД', skillGuide: 'Skill: чирж онилоод тавь', core: 'ЦӨМ', nextWave: 'ДАВАЛГАА', bossPair: 'БОСС',
+    move: 'ХӨДӨЛ', fire: 'ЦОХИЛТ', farm: 'ЦЭРЭГ', structure: 'ЦАМХАГ', target: 'БАЙ',
+    skillGuide: 'Товш: авто · чир: онил · хол чир: цуцал', core: 'ЦӨМ', nextWave: 'ДАВАЛГАА', bossPair: 'БОСС',
+    attackHint: 'Дараад барь: хүрээн дэх дайсны баатрыг түрүүлж цохино. Байгүй үед хөөхгүй. Space / mouse.',
+    farmHint: 'Зөвхөн цэрэг, босс цохино. Баатар болон цамхаг руу шилжихгүй.',
+    structureHint: 'Зөвхөн довтолж болох цамхаг, цөм цохино. Эсрэг цамхгийн хүрээнд орсон байх ёстой.',
+    priorityHint: 'Нэг төрлийн бай дундаас сонгох дараалал',
+    priorities: { nearest: 'Хамгийн ойр', lowestHp: 'Хамгийн бага HP', lowestRatio: 'Хамгийн бага HP %' },
     exit: 'ТОГЛООМООС ГАРАХ', networkResult: 'Тулаан дууслаа. Usion руу буцаж шинэ тоглолт нээгээрэй.',
     finishReasons: { core: 'Дайсны цөм нурсан', forfeit: 'Өрсөлдөгч холболтоо сэргээгээгүй', abandoned: 'Тоглогчид гарсан', dawnfall: 'Dawnfall дууссан', time: 'Цаг дууссан' },
-    skillDetails: {
-      shana: ['Q: 170 гэмтэл, 2.5s илчилнэ · 9s', 'E: 3×55 сум, 15% удаашруулна · 11s'],
-      diamond: ['Q: 4s турш 160 бамбай · 12s', 'E: 90 гэмтэл, түлхэнэ, 20% удаашруулна · 10s'],
-      scarlett: ['Q: 140 + 2s шаталт, 3 бай нэвтэлнэ · 11s', 'E: 6s дотор 3 сум +15 гэмтэл, 10% удаашрал · 12s'],
-      hina: ['Q: 120 зайд dash + 3s бууддаг хуулбар · 8s', 'E: 170 гэмтэл, 1.3s турш 25% удаашрал · 11s'],
-    },
+    skillDetails: skillDetails('mn'),
     boot: 'Тулааны талбарыг бэлдэж байна…', choose: 'Баатраа сонго', waiting: 'Өрсөлдөгч хүлээж байна',
     selected: 'Сонголоо · тулаан удахгүй эхэлнэ', you: 'ТА', rival: 'ӨРСӨЛДӨГЧ', solo: 'BOT БЭЛТГЭЛ', live: 'ШУУД',
     roomConnected: 'ӨРӨӨНД ХОЛБОГДСОН', roomConnecting: 'ӨРӨӨНД ХОЛБОЖ БАЙНА', pick: 'СОНГОНО', picked: 'СОНГОСОН', ready: 'БЭЛЭН', notJoined: 'ОРООГҮЙ', host: 'HOST',
@@ -28,14 +49,14 @@ export const copy = {
     wave: 'ДАВАЛГАА', paused: 'ӨРСӨЛДӨГЧ ДАХИН ХОЛБОГДОЖ БАЙНА', spirit: 'ШАРХДСАН СҮНС', countdown: 'ТУЛААН',
     dawnfall: 'DAWNFALL · ДАРАМТ ЦӨМИЙГ ЭВДЭНЭ', bossPower: 'БОССЫН ХҮЧ',
     skills: {
-      shana: ['PRECISION', 'VOLLEY'], diamond: ['AEGIS', 'REPULSE'],
-      scarlett: ['EMBER LINE', 'CINDER'], hina: ['SHADOW STEP', 'MOON SNARE'],
+      shana: ['ҮҮРИЙН ТЭМДЭГ', 'УХРАХ ЦАЦАЛТ'], diamond: ['ЭГИС', 'БОЛОР ШУГАМ'],
+      scarlett: ['ГАЛЫН БҮС', 'ДӨЛИЙН ХУРД'], hina: ['СҮҮДРИЙН АЛХАМ', 'САРНЫ ЦОХИЛТ'],
     },
     heroes: {
-      shana: ['Шана', 'Нарийн шидэлт · 3 сумт цацалт', 'НЭГ УДАА REROLL'],
-      diamond: ['Даймонд', 'Бамбай · түлхэлт ба удаашруулалт', 'CRYSTAL GUARD'],
-      scarlett: ['Скарлетт', 'Нэвт flame wave · шаталт', '3 ДАХЬ ЦОХИЛТ'],
-      hina: ['Хина', 'Dash + clone · удаашруулах урхи', 'AFTERIMAGE'],
+      shana: ['Шана', 'Тэмдэг + хүчтэй цохилт · ухрах цацалт', 'НЭГ УДАА REROLL'],
+      diamond: ['Даймонд', 'Шингээх бамбай · хариу цохилт ба түлхэлт', 'CRYSTAL GUARD'],
+      scarlett: ['Скарлетт', 'Галын бүс · хурдтай хүчтэй сум', '3 ДАХЬ ЦОХИЛТ'],
+      hina: ['Хина', 'Dash + хуулбар · шархадсан байг дуусгана', 'AFTERIMAGE'],
     },
     upgrades: {
       edge: ['Ирмэг', '+5% basic damage'], vitality: ['Амь', '+75 max HP'], arcana: ['Аркан', '+6% skill damage'],
@@ -48,15 +69,16 @@ export const copy = {
   en: {
     guide: '1500 HP · Escort minions: tower → core. Kills earn XP and upgrades. Defeat both bosses on one half to choose a 45s relic.',
     practiceRule: 'Picking a hero starts practice after a 3-second countdown',
-    move: 'MOVE', fire: 'FIRE', skillGuide: 'Skills: drag to aim, release', core: 'CORE', nextWave: 'WAVE IN', bossPair: 'BOSSES',
+    move: 'MOVE', fire: 'ATTACK', farm: 'FARM', structure: 'TOWER', target: 'TARGET',
+    skillGuide: 'Tap: auto · drag: aim · drag far: cancel', core: 'CORE', nextWave: 'WAVE IN', bossPair: 'BOSSES',
+    attackHint: 'Hold: prioritize enemy heroes in range. Never chases an absent target. Space / mouse.',
+    farmHint: 'Attack minions and bosses only. Never switches to heroes or structures.',
+    structureHint: 'Attack vulnerable towers and core only, from inside their threat ring.',
+    priorityHint: 'Choose a target within the preferred category',
+    priorities: { nearest: 'Nearest', lowestHp: 'Lowest HP', lowestRatio: 'Lowest HP %' },
     exit: 'EXIT GAME', networkResult: 'Match complete. Return to Usion to open a new duel.',
     finishReasons: { core: 'Enemy core destroyed', forfeit: 'Opponent did not reconnect', abandoned: 'Players left', dawnfall: 'Dawnfall resolved', time: 'Time limit reached' },
-    skillDetails: {
-      shana: ['Q: 170 damage, 2.5s reveal · 9s cooldown', 'E: 3×55 bolts, 15% slow · 11s cooldown'],
-      diamond: ['Q: 160 shield for 4s · 12s cooldown', 'E: 90 damage, knockback, 20% slow · 10s cooldown'],
-      scarlett: ['Q: 140 + 2s burn, pierces 3 targets · 11s', 'E: 3 shots +15 damage, 10% slow within 6s · 12s'],
-      hina: ['Q: 120-unit dash + 3s firing clone · 8s', 'E: 170 damage, 25% slow for 1.3s · 11s'],
-    },
+    skillDetails: skillDetails('en'),
     boot: 'Preparing the battleground…', choose: 'Choose your hero', waiting: 'Waiting for rival',
     selected: 'Locked in · battle begins soon', you: 'YOU', rival: 'RIVAL', solo: 'BOT PRACTICE', live: 'LIVE',
     roomConnected: 'ROOM CONNECTED', roomConnecting: 'CONNECTING TO ROOM', pick: 'PICKING', picked: 'LOCKED', ready: 'READY', notJoined: 'NOT JOINED', host: 'HOST',
@@ -73,14 +95,14 @@ export const copy = {
     wave: 'WAVE', paused: 'RIVAL IS RECONNECTING', spirit: 'WOUNDED SPIRIT', countdown: 'BATTLE',
     dawnfall: 'DAWNFALL · PRESSURE BREAKS THE CORE', bossPower: 'BOSS POWER',
     skills: {
-      shana: ['PRECISION', 'VOLLEY'], diamond: ['AEGIS', 'REPULSE'],
-      scarlett: ['EMBER LINE', 'CINDER'], hina: ['SHADOW STEP', 'MOON SNARE'],
+      shana: ['DAWN MARK', 'RECOIL VOLLEY'], diamond: ['AEGIS', 'CRYSTAL LINE'],
+      scarlett: ['EMBER FIELD', 'CINDER RUSH'], hina: ['SHADOW STEP', 'MOON REAP'],
     },
     heroes: {
-      shana: ['Shana', 'Precision bolt · three-shot volley', 'ONE OFFER REROLL'],
-      diamond: ['Diamond', 'Shield · knockback and slow', 'CRYSTAL GUARD'],
-      scarlett: ['Scarlett', 'Piercing flame wave · burn', 'THIRD SHOT PROC'],
-      hina: ['Hina', 'Dash + clone · slowing snare', 'AFTERIMAGE'],
+      shana: ['Shana', 'Mark + empowered hit · recoil volley', 'ONE OFFER REROLL'],
+      diamond: ['Diamond', 'Absorb + counterattack · crystal push', 'CRYSTAL GUARD'],
+      scarlett: ['Scarlett', 'Fire field · fast empowered shots', 'THIRD SHOT PROC'],
+      hina: ['Hina', 'Dash + clone · missing-health finisher', 'AFTERIMAGE'],
     },
     upgrades: {
       edge: ['Edge', '+5% basic damage'], vitality: ['Vitality', '+75 max HP'], arcana: ['Arcana', '+6% skill damage'],

@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AnnouncementState, canControl, phaseVisibility, teamHud } from '../src/ui/presentation.js';
+import { setClass, setStyle, setText } from '../src/ui/hudDom.js';
+import { copy } from '../src/ui/i18n.js';
+import { HEROES } from '../server/heroes.js';
 
 test('authoritative phase restores lobby on promotion and cannot reopen draft over live or finished play', () => {
   for (const phase of ['select', 'playing', 'select', 'countdown', 'playing', 'finished']) {
@@ -36,4 +39,37 @@ test('wave and reward announcements remain readable across 15Hz snapshots then e
   snapshot.now = 30; assert.equal(state.update(snapshot, { bossPowerUntil: 60 }, labels), 'POWER · 30s');
   state.reset(); snapshot.now = 0; snapshot.match.wave = 0;
   assert.equal(state.update(snapshot, {}, labels), '');
+});
+
+test('identical 15Hz HUD values cause no repeated text, style, or class mutation', () => {
+  let textWrites = 0, styleWrites = 0, classWrites = 0, text = '', width = '';
+  const classes = new Set();
+  const node = {
+    get textContent() { return text; }, set textContent(value) { text = value; textWrites += 1; },
+    style: { get width() { return width; }, set width(value) { width = value; styleWrites += 1; } },
+    classList: { contains: name => classes.has(name), toggle(name, enabled) { classWrites += 1; if (enabled) classes.add(name); else classes.delete(name); } },
+  };
+  for (let tick = 0; tick < 15; tick += 1) {
+    setText(node, '1500 / 1500'); setStyle(node, 'width', '100%'); setClass(node, 'on', true);
+  }
+  assert.deepEqual([textWrites, styleWrites, classWrites], [1, 1, 1]);
+  setText(node, '1490 / 1500'); setStyle(node, 'width', '99%'); setClass(node, 'on', false);
+  assert.deepEqual([textWrites, styleWrites, classWrites], [2, 2, 2]);
+});
+
+test('both languages describe the actual hero mechanics and all targeting priorities', () => {
+  assert.doesNotMatch(copy.en.farmHint, /clone/i);
+  assert.doesNotMatch(copy.mn.farmHint, /хуулбар/);
+  for (const language of Object.values(copy)) {
+    assert.deepEqual(Object.keys(language.priorities), ['nearest', 'lowestHp', 'lowestRatio']);
+    for (const [heroId, hero] of Object.entries(HEROES)) {
+      assert.equal(language.skills[heroId].length, 2);
+      for (const [index, skill] of hero.skills.entries()) {
+        assert.ok(language.skillDetails[heroId][index].includes(`${skill.cooldown}s`));
+        assert.doesNotMatch(language.skillDetails[heroId][index], /undefined|NaN/);
+      }
+    }
+    assert.ok(language.skillDetails.scarlett[0].includes(`${HEROES.scarlett.skills[0].pulses}×${HEROES.scarlett.skills[0].damage}`));
+    assert.ok(language.skillDetails.hina[1].includes(String(HEROES.hina.skills[1].missingHpCap)));
+  }
 });

@@ -3,6 +3,7 @@ import { applyDamage } from './combat.js';
 import { addEffect } from './effects.js';
 import { traceWalkableMove } from './geometry.js';
 import { distanceSquared } from './math.js';
+import { isTargetable, targetEntity } from './targeting.js';
 
 export function spawnProjectile(world, options) {
   const length = Math.hypot(options.dx, options.dy) || 1;
@@ -17,6 +18,7 @@ export function spawnProjectile(world, options) {
     kind: 'projectile',
     projectileType: options.projectileType || 'basic',
     ownerId: options.ownerId,
+    targetId: options.targetId || null,
     team: options.team,
     sourceX: source.x,
     sourceY: source.y,
@@ -43,6 +45,10 @@ export function spawnProjectile(world, options) {
 }
 
 function targetsFor(world, projectile) {
+  if (projectile.targetId) {
+    const target = targetEntity(world, projectile.targetId);
+    return target && !projectile.hitIds.includes(target.id) ? [target] : [];
+  }
   const targets = [];
   for (const player of Object.values(world.players)) {
     if (player.team !== projectile.team && player.spiritUntil <= world.matchTime) targets.push(player);
@@ -81,6 +87,13 @@ export function updateProjectiles(world, dt) {
   // another shot this tick still intercepts contacts already in flight.
   for (const projectile of world.projectiles) {
     if (!projectile.alive || projectile.remaining <= 0) continue;
+    if (projectile.targetId) {
+      const target = targetEntity(world, projectile.targetId);
+      const source = { team: projectile.team, x: projectile.sourceX, y: projectile.sourceY };
+      if (!isTargetable(world, source, target, Infinity, 0)) { projectile.alive = false; continue; }
+      const length = Math.hypot(target.x - projectile.x, target.y - projectile.y);
+      if (length > .000001) { projectile.dx = (target.x - projectile.x) / length; projectile.dy = (target.y - projectile.y) / length; }
+    }
     const initialBudget = Math.min(projectile.remaining, projectile.speed * dt);
     let budget = initialBudget;
     // Hit ids prevent repeat hits at t=0; no teleport is needed after piercing.

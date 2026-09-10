@@ -29,3 +29,8 @@
 - Keep basic-fire feedback on the attack control when requested; a persistent world aiming ray adds clutter. Distinguish immediate input feedback from an authoritative shot acknowledgement, and preserve deliberate skill previews.
 - Smooth local prediction must advance its correction anchor between snapshots, not pull toward a stationary old position each frame. Test multiple frame rates, stale/duplicate packets, collision and pause/reset paths.
 - Latch discontinuities until a rendered frame consumes them; multiple snapshots can arrive before one frame. Track held input sources separately so releasing a mouse or key cannot cancel a still-held touch joystick.
+- Auto attacks need category-exclusive controls and a server-chosen valid target, not a directional joystick disguised as auto-aim. Capture quick-tap category independently from whichever held source resumes afterward.
+- Acquire simultaneous auto-attack targets before firing either player's shot; removing spawn protection during sequential acquisition otherwise creates a real side-order advantage.
+- Balance new movement/zone kits with re-engagement and dodge-aware tests, not stationary fixtures that disengage forever or stand in telegraphs. Keep mirrored-side and power-cap gates unchanged when tuning.
+- Report exact rendering work reductions, not invented FPS gains. Pool high-frequency minion/tower effects as well as hero skills, and avoid recomputing static minimap terrain or full-resolution fog every snapshot.
+- Generated atlas dimensions and alpha must be validated: request genuine transparency, inspect the result, and partition actual dimensions rather than assuming the requested size was returned.

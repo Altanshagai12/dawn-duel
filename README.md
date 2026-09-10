@@ -22,9 +22,12 @@ backing pixels; joystick, skill drag and pointer aiming invert that rotation.
 Real landscape frames render normally. This requires no native app release or
 registry/SDK changes. All game source, assets, tests and deployment stay here.
 
-Basic fire has no persistent world aiming ray: the attack joystick lights while
-held and pulses on an authoritative shot. Real projectiles/impacts and deliberate
-Q/E targeting previews remain. Frame-rate-independent camera damping, bounded
+Basic fire automatically selects a valid visible target: the large Attack
+button prioritizes heroes, Farm exclusively selects minions/bosses, and
+Tower exclusively selects vulnerable structures. Choose nearest, lowest HP or
+lowest HP percentage. Tap skills to auto-aim, or drag for deliberate targeting.
+No persistent world aiming ray is drawn; the relevant button pulses on an
+authoritative shot. Frame-rate-independent camera damping, bounded
 local prediction and buffered remote motion reduce packet-to-packet judder
 without changing movement speed, damage, cooldowns or server authority.
 
@@ -88,8 +91,11 @@ The suite rebuilds the portable server bundle, validates every shipped
 asset and SDK call, then checks deterministic simulation, combat caps, waves,
 structures, XP/upgrades, camps/relics, Wounded Spirit behavior, fog payload
 security, input validation, and hero symmetry.
-The balance matrix covers all 16 bot matchups plus team-swapped stationary
-duels, with a maximum allowed survivor margin of 15% base HP.
+The balance matrix covers all 16 bot matchups plus team-swapped auto-target
+engagement duels at three ranges, with a maximum allowed survivor margin of
+15% base HP. Every hero must retain both a strength and a counter in this fixed
+bot model. See [combat v7 design and evidence](docs/combat-v7.md) for current kits,
+targeting contracts, research sources and honest limits.
 
 ## Usion contract
 
@@ -122,3 +128,7 @@ entrance gap, and wall outline is rendered from the exact geometry shared by
 server movement and client prediction; there are no separate shrine objectives.
 Gameplay code, layout, balance, network model, UI, structures, effects, and
 rules in this repository are new.
+
+Combat v7 adds generated four-frame attacks for both guardian types, an
+eight-effect skill atlas and bright jade flagstone/forest materials. Selected
+source images, runtime paths and generation briefs are in [art v7](docs/art-v7.md).

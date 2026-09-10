@@ -1,5 +1,9 @@
 import { STRUCTURES } from '../../server/config.js';
 import { EntityMotion, MotionClock, facingRow, moveView } from './motion.js';
+import { guardianFrame, projectileArt } from './combatArt.js';
+import { SkillEffects } from './SkillEffects.js';
+import { ShotEffects } from './ShotEffects.js';
+import { createStatusView, updateStatusView } from './StatusView.js';
 export { predictionSpeed, structureBlocks } from './motion.js';
 
 const HERO_SCALE = { shana: .43, diamond: .42, scarlett: .43, hina: .43 };
@@ -29,6 +33,8 @@ export class EntityViews {
     for (const view of this.items.values()) view.root.destroy(true);
     this.items.clear(); this.seenEffects.clear(); this.structures = []; this.motionClock.reset();
     this.playing = false; this.snapshotNow = undefined; this.localId = null;
+    this.skillEffects?.reset();
+    this.shotEffects?.reset();
   }
 
   color(team) { return team === 0 || team === 1 ? COLORS[team === this.team ? 0 : 1] : 0xc4a4ff; }
@@ -42,7 +48,9 @@ export class EntityViews {
       console.error(`[dawn-duel] entity_texture_missing id=${entity.id} kind=${entity.kind} texture=${texture}`);
     }
     const scale = entity.kind === 'player' || entity.kind === 'clone' ? HERO_SCALE[entity.hero] : entity.kind === 'camp' ? .5 : .3;
-    const sprite = this.scene.add.sprite(0, 0, texture, 24).setScale(scale);
+    const sprite = entity.kind === 'camp'
+      ? this.scene.add.sprite(0, -18, `${entity.campType}-attack`, 0).setDisplaySize(128, 171)
+      : this.scene.add.sprite(0, 0, texture, 24).setScale(scale);
     if (entity.team === 0 || entity.team === 1) sprite.setTint(entity.team === this.team ? 0xc5ffff : 0xffc5c8);
     if (entity.kind === 'clone') sprite.setAlpha(.55);
     const barBg = this.scene.add.rectangle(0, -42, 58, 5, 0x041010, .9).setOrigin(.5);
@@ -52,14 +60,17 @@ export class EntityViews {
       : null;
     const children = label ? [sprite, barBg, bar, label] : [sprite, barBg, bar];
     const root = this.scene.add.container(entity.x, entity.y, children).setDepth(entity.y + 30);
-    return { root, sprite, bar, label, entity, targetX: entity.x, targetY: entity.y, lastX: entity.x, lastY: entity.y };
+    const status = entity.kind === 'player' ? createStatusView(this.scene, root) : null;
+    return { root, sprite, bar, label, status, entity, targetX: entity.x, targetY: entity.y, lastX: entity.x, lastY: entity.y };
   }
 
   createProjectile(entity) {
     const color = entity.projectileType?.includes('ember') || entity.projectileType === 'flame' ? 0xff7b45 : this.color(entity.team);
     const width = entity.projectileType === 'flame' ? 82 : entity.projectileType === 'precision' ? 92 : 60;
-    const root = this.scene.add.image(entity.x, entity.y, 'arcBolt').setDisplaySize(width, width * .34)
-      .setTint(color).setRotation(Math.atan2(entity.dy || 0, entity.dx || 1)).setDepth(600);
+    const art = projectileArt(entity.projectileType);
+    const root = this.scene.add.image(entity.x, entity.y, art?.texture || 'arcBolt', art?.frame)
+      .setDisplaySize(art?.width || width, art?.height || width * .34)
+      .setTint(color).setRotation(Math.atan2(entity.dy ?? 0, entity.dx ?? 1)).setDepth(600);
     root.setBlendMode(Phaser.BlendModes.ADD);
     return { root, sprite: root, entity, targetX: entity.x, targetY: entity.y, lastX: entity.x, lastY: entity.y };
   }
@@ -95,6 +106,7 @@ export class EntityViews {
     this.snapshotNow = snapshot.now;
     this.playing = playing;
     const receivedMs = performance.now();
+    this.receivedMs = receivedMs;
     this.motionClock.push(snapshot.now * 1000, receivedMs);
     this.structures = Object.values(snapshot.structures);
     const entities = [
@@ -116,11 +128,16 @@ export class EntityViews {
       else view.motion.accept(entity, snapshot.now * 1000, receivedMs, resetMotion);
       view.entity = entity;
       view.targetX = entity.x; view.targetY = entity.y;
+      if (entity.kind === 'projectile') {
+        const heading = Math.atan2(entity.dy ?? 0, entity.dx ?? 1);
+        if (heading !== view.heading) { view.root.setRotation(heading); view.heading = heading; }
+      }
       if (view.bar && entity.maxHp) view.bar.scaleX = Math.max(0, entity.hp / entity.maxHp);
       if (entity.kind === 'player') {
         const name = playerDisplayName(entity);
         if (view.label?.text !== name) view.label?.setText(name);
         view.root.setAlpha(entity.spiritUntil > snapshot.now ? .38 : 1);
+        if (view.status) updateStatusView(view.status, entity, snapshot.now);
       }
       if (view.range) {
         const you = snapshot.players[snapshot.you];
@@ -143,6 +160,11 @@ export class EntityViews {
     const input = this.inputState?.() || {};
     const clientMs = performance.now();
     const renderMs = this.motionClock.sample(clientMs);
+    const visualNow = (this.snapshotNow || 0) + (this.playing ? Math.min(.1, Math.max(0, (clientMs - (this.receivedMs || clientMs)) / 1000)) : 0);
+    this.skillEffects?.update(visualNow);
+    // Transient shot trails age on the monotonic client clock so packet silence
+    // cannot freeze them; persistent ground warnings stay on server visual time.
+    this.shotEffects?.update(clientMs / 1000);
     for (const [id, view] of this.items) {
       const local = id === this.localId && view.entity.kind === 'player';
       const beforeX = view.root.x, beforeY = view.root.y;
@@ -150,17 +172,25 @@ export class EntityViews {
       moveView(view, { local, input, playing: this.playing, now: this.snapshotNow || 0,
         clientMs, renderMs, delta, structures: this.structures });
       if (['projectile', 'tower', 'core'].includes(view.entity.kind)) continue;
+      if (view.entity.kind === 'camp') {
+        const frame = guardianFrame(view.entity, visualNow);
+        if (frame !== view.frame) { view.sprite.setFrame(frame); view.frame = frame; }
+        if (Number.isFinite(view.entity.attackX)) view.sprite.setFlipX(view.entity.attackX < view.entity.x);
+        if (view.depth !== view.root.y + 30) { view.depth = view.root.y + 30; view.root.setDepth(view.depth); }
+        continue;
+      }
       const dx = view.root.x - beforeX, dy = view.root.y - beforeY;
       const moving = !view.justSnapped && Math.hypot(dx, dy) > delta / 1000;
-      const firing = local && this.playing && input.attack && !(view.entity.spiritUntil > this.snapshotNow);
-      if (firing) view.row = facingRow(input.aimX, input.aimY, view.row);
+      const firing = this.playing && !(view.entity.spiritUntil > this.snapshotNow)
+        && ((local && input.attack) || visualNow - (view.entity.attackAt ?? -10) < .3);
+      if (firing) view.row = facingRow(view.entity.attackAimX ?? input.aimX, view.entity.attackAimY ?? input.aimY, view.row);
       else if (local && Math.hypot(input.moveX || 0, input.moveY || 0) > .02) {
         view.row = facingRow(input.moveX, input.moveY, view.row);
       } else if (moving) view.row = facingRow(dx, dy, view.row);
       view.animationMs = moving || firing ? (view.animationMs || 0) + delta : 0;
       const frame = (view.row ?? 4) * 6 + Math.floor(view.animationMs / 110) % 6;
       if (view.frame !== frame) { view.sprite.setFrame(frame); view.frame = frame; }
-      view.root.setDepth(view.root.y + 30);
+      if (view.depth !== view.root.y + 30) { view.depth = view.root.y + 30; view.root.setDepth(view.depth); }
     }
   }
 
@@ -168,14 +198,19 @@ export class EntityViews {
     for (const effect of effects) {
       if (this.seenEffects.has(effect.id)) continue;
       this.seenEffects.add(effect.id);
-      if (effect.kind === 'campWarn') {
+      if (effect.kind === 'skillCast' || effect.kind === 'cinderZone') {
+        this.skillEffects ||= new SkillEffects(this.scene);
+        this.skillEffects.show(effect, this.snapshotNow || 0);
+      } else if (effect.kind === 'campWarn') {
         const ring = this.scene.add.circle(effect.x, effect.y, effect.radius, 0xff594d, .12).setStrokeStyle(4, 0xff786e, .8).setDepth(550);
         this.scene.tweens.add({ targets: ring, scale: .25, alpha: .9, duration: 480, onComplete: () => ring.destroy() });
       } else if (effect.kind === 'dash') {
         const line = this.scene.add.line(0, 0, effect.x, effect.y, effect.tx, effect.ty, this.color(effect.team), .6).setOrigin(0).setLineWidth(10).setDepth(590);
         this.scene.tweens.add({ targets: line, alpha: 0, duration: 260, onComplete: () => line.destroy() });
       } else if ((effect.kind === 'structureShot' || effect.kind === 'minionShot') && Number.isFinite(effect.tx)) {
-        this.renderShot(effect);
+        this.shotEffects ||= new ShotEffects(this.scene);
+        this.shotEffects.show(effect, (this.receivedMs || performance.now()) / 1000,
+          this.color(effect.team), this.items.get(this.localId)?.root);
       } else if (Number.isFinite(effect.x)) {
         const color = effect.kind === 'defeat' ? 0xffffff : effect.kind === 'campStrike' ? 0xff6b56 : this.color(effect.team);
         const ring = this.scene.add.circle(effect.x, effect.y, effect.radius || 18, color, .2).setStrokeStyle(2, color, .8).setDepth(610);
@@ -185,57 +220,4 @@ export class EntityViews {
     if (this.seenEffects.size > 500) this.seenEffects.clear();
   }
 
-  renderShot(effect) {
-    const structure = effect.kind === 'structureShot';
-    const color = this.color(effect.team);
-    const startY = effect.y - (structure ? 72 : 12);
-    const angle = Math.atan2(effect.ty - startY, effect.tx - effect.x);
-    const glow = this.scene.add.line(0, 0, effect.x, startY, effect.tx, effect.ty, color, structure ? .34 : .22)
-      .setOrigin(0).setLineWidth(structure ? 9 : 5).setDepth(603).setBlendMode(Phaser.BlendModes.ADD);
-    const beam = this.scene.add.line(0, 0, effect.x, startY, effect.tx, effect.ty, 0xffffff, .9)
-      .setOrigin(0).setLineWidth(structure ? 2 : 1).setDepth(604);
-    const bolt = this.scene.add.image(effect.x, startY, 'arcBolt')
-      .setDisplaySize(structure ? 112 : 66, structure ? 42 : 25)
-      .setRotation(angle).setTint(color).setDepth(606).setBlendMode(Phaser.BlendModes.ADD);
-    // These are authoritative hitscan attacks: the impact accompanies the HP
-    // snapshot, while the beam fades. No delayed impact after a death/respawn.
-    const duration = structure ? 180 : 120;
-    bolt.setPosition(effect.tx, effect.ty);
-    this.impactBurst(effect.tx, effect.ty, color, structure);
-    this.scene.tweens.add({
-      targets: bolt,
-      alpha: 0,
-      duration,
-      ease: 'Quad.easeIn',
-      onComplete: () => {
-        bolt.destroy();
-      },
-    });
-    this.scene.tweens.add({
-      targets: [glow, beam], alpha: 0, delay: duration * .42, duration: duration * .85,
-      onComplete: () => { glow.destroy(); beam.destroy(); },
-    });
-  }
-
-  impactBurst(x, y, color, strong) {
-    const radius = strong ? 28 : 17;
-    const flash = this.scene.add.circle(x, y, radius * .45, 0xffffff, .95).setDepth(610)
-      .setBlendMode(Phaser.BlendModes.ADD);
-    const ring = this.scene.add.circle(x, y, radius, color, .24).setStrokeStyle(strong ? 5 : 3, color, .95)
-      .setDepth(609).setBlendMode(Phaser.BlendModes.ADD);
-    const sparks = Array.from({ length: strong ? 8 : 5 }, (_, index) => {
-      const angle = Math.PI * 2 * index / (strong ? 8 : 5);
-      return this.scene.add.circle(x, y, strong ? 4 : 3, index % 2 ? 0xffffff : color, .9).setDepth(611)
-        .setData('tx', x + Math.cos(angle) * radius * 1.7)
-        .setData('ty', y + Math.sin(angle) * radius * 1.7);
-    });
-    for (const spark of sparks) this.scene.tweens.add({
-      targets: spark, x: spark.getData('tx'), y: spark.getData('ty'), alpha: 0, duration: 260,
-      onComplete: () => spark.destroy(),
-    });
-    this.scene.tweens.add({ targets: flash, scale: 2.4, alpha: 0, duration: 180, onComplete: () => flash.destroy() });
-    this.scene.tweens.add({ targets: ring, scale: 1.8, alpha: 0, duration: 300, onComplete: () => ring.destroy() });
-    const local = this.items.get(this.localId)?.root;
-    if (strong && local && Math.hypot(local.x - x, local.y - y) < 90) this.scene.cameras.main.shake(55, .001);
-  }
 }

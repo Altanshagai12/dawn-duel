@@ -1,0 +1,48 @@
+/* MOBA thumb arc uses the same logical landscape viewport as the battlefield. */
+.action-cluster { width: 256px; height: 196px; right: max(16px, var(--safe-right)); bottom: max(16px, var(--safe-bottom)); }
+.combat-button { position: absolute; padding: 0; border-radius: 50%; color: #ffe4a1; border: 2px solid #ccb66b; background: radial-gradient(circle at 40% 28%, #334f50, #122726 58%, #061211); box-shadow: inset 0 0 0 3px #081715, 0 3px 12px #0009; pointer-events: auto; touch-action: none; cursor: pointer; }
+.combat-button svg { display: block; fill: #dcc68133; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.attack-main { width: 98px; height: 98px; left: auto; right: 26px; bottom: 20px; border-width: 3px; }
+.attack-main svg { width: 55px; height: 55px; margin: 5px auto 0; filter: drop-shadow(0 0 4px #ecc86755); }
+.attack-main span { display: block; font-size: 9px; font-weight: 900; letter-spacing: .08em; }
+.attack-main kbd { display: block; margin-top: 2px; color: #b5c4bc; font: 7px ui-sans-serif, system-ui, sans-serif; }
+.attack-special { width: 44px; height: 44px; border-color: #8fa5a2; color: #cde4df; }
+.attack-special svg { width: 27px; height: 27px; margin: 2px auto 0; }
+.attack-special span { position: absolute; left: 50%; bottom: -13px; transform: translateX(-50%); font-size: 7px; line-height: 10px; font-weight: 800; letter-spacing: .03em; white-space: nowrap; text-shadow: 0 1px 4px #000, 0 0 3px #000; }
+#attack-structure { right: 0; bottom: 104px; }
+#attack-farm { right: 135px; bottom: 2px; }
+.combat-button.is-held { border-color: #fff0b1; color: #fff4ce; background-color: #b3a05f; box-shadow: inset 0 0 0 3px #081715, 0 0 18px #f5c66a55; }
+.combat-button.is-firing { border-color: #fff0b1; color: #fff4ce; }
+.combat-button:active { filter: brightness(1.2); }
+.combat-button:disabled { opacity: .4; cursor: default; }
+.action-cluster .skill { width: 60px; height: 60px; border: 2px solid #d2c28a; box-shadow: inset 0 0 0 3px #071616, 0 3px 10px #0009; overflow: visible; }
+#skill-1 { left: 58px; bottom: 126px; }
+#skill-2 { left: 8px; bottom: 58px; }
+.skill-icon { position: absolute; inset: 3px; display: block; border-radius: 50%; background-image: url('../assets/effects/skill-atlas-v7.webp'); background-size: 400% 200%; background-position: var(--skill-x, 0%) var(--skill-y, 0%); background-repeat: no-repeat; }
+.action-cluster .skill b { position: absolute; left: 5px; bottom: 2px; min-width: 16px; padding: 1px 3px; border-radius: 7px; background: #031314d9; color: #fff3d0; font-size: 12px; line-height: 15px; text-shadow: 0 1px 3px #000; z-index: 3; }
+.action-cluster .skill span { position: absolute; top: calc(100% + 5px); left: 50%; width: 90px; margin: 0; transform: translateX(-50%); font-size: 7px; text-shadow: 0 1px 4px #000, 0 0 3px #000; }
+.action-cluster .skill i { inset: 2px; z-index: 2; background: #021112c9; }
+.target-priority { position: absolute; right: 0; bottom: 170px; width: 134px; height: 26px; display: flex; align-items: center; gap: 4px; padding: 2px 5px; border: 1px solid #68868199; border-radius: 8px; background: #071c1deb; pointer-events: auto; }
+.target-priority > span { font-size: 7px; color: #9db6ae; letter-spacing: .08em; }
+.target-priority select { min-width: 0; width: 100%; height: 100%; border: 0; outline-offset: 2px; color: #e4e8cf; background: #071c1d; font: 9px ui-sans-serif, system-ui, sans-serif; touch-action: manipulation; }
+.action-cluster .skill-guide { right: 0; bottom: -12px; width: 240px; color: #bfd1c5; font-size: 7px; text-shadow: 0 1px 3px #000; }
+@container game (max-height: 520px) {
+  .choice-stack { max-height: calc(100cqh - 286px); min-height: 68px; }
+  .action-cluster .skill-guide { display: none; }
+}
+@container game (max-width: 740px) or (max-height: 360px) {
+  .action-cluster { width: 220px; height: 174px; right: max(12px, var(--safe-right)); bottom: max(14px, var(--safe-bottom)); }
+  .attack-main { width: 84px; height: 84px; right: 20px; bottom: 15px; }
+  .attack-main svg { width: 45px; height: 45px; margin-top: 2px; }
+  .attack-main span { font-size: 8px; }
+  .attack-main kbd { display: none; }
+  .action-cluster .skill { width: 52px; height: 52px; }
+  #skill-1 { left: 46px; bottom: 118px; }
+  #skill-2 { left: 0; bottom: 56px; }
+  #attack-farm { right: 122px; bottom: 0; }
+  .target-priority { bottom: 148px; width: 112px; }
+  .target-priority > span { display: none; }
+  .player-bars { left: 46%; width: min(220px, 30cqw); }
+  .choice-stack { max-height: calc(100cqh - 260px); min-height: 62px; }
+}
+@media (pointer: coarse) { .attack-main kbd { display: none; } }

@@ -16,7 +16,9 @@ function spawnCamp(world, camp) {
   camp.idleSince = world.matchTime;
   camp.lastHitBy = null;
   camp.burn = null;
+  camp.precisionMark = null;
   camp.pendingStrike = null;
+  camp.attackStartedAt = -999; camp.attackImpactAt = -999; camp.attackUntil = -999;
   camp.cycle += 1;
   // Staggered respawns expire only this boss's kill, not a newer kill of its
   // partner. Both must be defeated before either contribution expires.
@@ -60,6 +62,9 @@ function resetCamp(world, camp, dt) {
     camp.hp = Math.min(camp.maxHp, camp.hp + camp.maxHp * CAMPS.resetHealRatioPerSecond * dt);
     camp.lastHitBy = null;
   }
+  if (camp.pendingStrike) {
+    camp.attackStartedAt = -999; camp.attackImpactAt = -999; camp.attackUntil = -999;
+  }
   camp.pendingStrike = null;
 }
 
@@ -67,6 +72,8 @@ function resolveStrike(world, camp, config) {
   const strike = camp.pendingStrike;
   if (!strike || world.matchTime < strike.at) return false;
   camp.pendingStrike = null;
+  camp.attackImpactAt = world.matchTime;
+  camp.attackUntil = world.matchTime + .35;
   for (const player of Object.values(world.players)) {
     if (player.hp <= 0 || player.spiritUntil > world.matchTime) continue;
     const radius = strike.radius + player.radius;
@@ -101,6 +108,8 @@ export function updateCamps(world, dt) {
       if (!camp.pendingStrike && world.matchTime >= camp.attackReadyAt) {
         camp.attackReadyAt = world.matchTime + config.cooldown + config.windup;
         camp.pendingStrike = { at: world.matchTime + config.windup, x: target.x, y: target.y, radius: config.strikeRadius };
+        camp.attackStartedAt = world.matchTime; camp.attackImpactAt = camp.pendingStrike.at;
+        camp.attackUntil = camp.pendingStrike.at + .35; camp.attackX = target.x; camp.attackY = target.y;
         addEffect(world, 'campWarn', { x: target.x, y: target.y, radius: config.strikeRadius, campKind: camp.campType }, config.windup);
       }
     } else {

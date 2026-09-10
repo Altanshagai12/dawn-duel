@@ -82,6 +82,22 @@ test('the client contains no standalone buff shrine renderer or HUD copy', () =>
 
 test('production loads one versioned client bundle so stale modules cannot mix', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  assert.match(html, /<script type="module" src="\.\/app\.v6\.js"><\/script>/);
+  assert.match(html, /<script type="module" src="\.\/app\.v7\.js"><\/script>/);
   assert.doesNotMatch(html, /src="\.\/src\/main\.js"/);
+});
+
+test('combat controls are native buttons with exclusive categories and a logical landscape thumb arc', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../styles/combat-controls.css', import.meta.url), 'utf8');
+  for (const id of ['aim-stick', 'attack-farm', 'attack-structure', 'skill-1', 'skill-2']) {
+    assert.match(html, new RegExp(`<button id="${id}"[^>]*type="button"`));
+  }
+  for (const priority of ['nearest', 'lowestHp', 'lowestRatio']) assert.ok(html.includes(`value="${priority}"`));
+  assert.ok(html.indexOf('styles/combat-controls.css') > html.indexOf('styles/responsive.css'));
+  assert.match(css, /\.attack-special\s*\{[^}]*width:\s*44px;\s*height:\s*44px/);
+  assert.match(css, /@container game \(max-width: 740px\) or \(max-height: 360px\)/);
+  assert.match(css, /\.attack-main\s*\{[^}]*width:\s*84px;\s*height:\s*84px/);
+  assert.match(css, /skill-atlas-v7\.webp/);
+  assert.doesNotMatch(css, /\d+v[wh]/);
+  assert.doesNotMatch(html, /styles\/[^" ]+\?v=[0-6]"/);
 });

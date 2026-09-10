@@ -42,9 +42,10 @@ test('simultaneous lethal Diamond repulses resolve for both players', () => {
   Object.assign(blue, lanePoint(MAP.riverProgress - 40));
   Object.assign(red, lanePoint(MAP.riverProgress + 40));
   blue.hp = 50; red.hp = 50;
-  applyInput(world, blue.id, { seq: 1, moveX: 0, moveY: 0, aimX: 1, aimY: 0, skill2: true });
-  applyInput(world, red.id, { seq: 1, moveX: 0, moveY: 0, aimX: -1, aimY: 0, skill2: true });
+  applyInput(world, blue.id, { seq: 1, moveX: 0, moveY: 0, aimX: 1, aimY: 0, skill2: true, skill2Auto: true });
+  applyInput(world, red.id, { seq: 1, moveX: 0, moveY: 0, aimX: -1, aimY: 0, skill2: true, skill2Auto: true });
   updatePlayers(world, 1 / 30);
+  updateProjectiles(world, .2);
   assert.equal(blue.deaths, 1);
   assert.equal(red.deaths, 1);
 });

@@ -86,6 +86,16 @@ function dodgeGuardian(world, bot) {
   return { x: MAP.laneNormalX * sign, y: MAP.laneNormalY * sign };
 }
 
+function dodgeEmber(world, bot) {
+  const danger = world.zones.find(zone => zone.team !== bot.team && zone.pulsesLeft > 0
+    && distanceSquared(bot, zone) <= (zone.radius + bot.radius + 22) ** 2);
+  if (!danger) return null;
+  const from = normalize(bot.x - danger.x, bot.y - danger.y, 0, 0);
+  if (from.length) return from;
+  const sign = bot.team === 0 ? 1 : -1;
+  return { x: MAP.laneNormalX * sign, y: MAP.laneNormalY * sign };
+}
+
 export function updateBot(world, botId, memory = {}) {
   const bot = world.players[botId];
   if (!bot) return memory;
@@ -107,7 +117,7 @@ export function updateBot(world, botId, memory = {}) {
     : target?.kind === 'camp' ? { x: 0, y: 0 }
     : target === home ? (range > PLAYER.fountainHealRadius * .65 ? aim : { x: 0, y: 0 })
     : range > attackRange ? aim : range < 185 ? { x: -aim.x, y: -aim.y } : { x: 0, y: 0 };
-  const dodge = dodgeGuardian(world, bot);
+  const dodge = dodgeGuardian(world, bot) || dodgeEmber(world, bot);
   if (dodge) move = dodge;
   const canCast = world.phase === 'playing' && bot.spiritUntil <= world.matchTime;
   applyCommand(world, bot.id, 'input', {
@@ -117,6 +127,10 @@ export function updateBot(world, botId, memory = {}) {
     aimX: aim.x,
     aimY: aim.y,
     attack: target !== home && range <= PLAYER.attackRange && !traceWalkableMove(bot, target).blocked,
+    attackMode: structure ? 'structure' : target?.kind === 'camp' ? 'farm' : 'auto',
+    targetPriority: 'nearest',
+    skill1Auto: true,
+    skill2Auto: true,
     skill1: canCast && range <= 400 && world.matchTime >= bot.skillReady[0],
     skill2: canCast && range <= 300 && world.matchTime >= bot.skillReady[1],
   });

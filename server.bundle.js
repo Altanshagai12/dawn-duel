@@ -446,6 +446,7 @@ function createWorld(seed = 20260904) {
     hostId: null,
     minions: [],
     projectiles: [],
+    zones: [],
     clones: [],
     effects: [],
     structures: {
@@ -511,6 +512,12 @@ function addPlayer(world, id, name = "Player") {
     thirdShot: 0,
     cinderCharges: 0,
     cinderUntil: 0,
+    riposteDamage: 0,
+    riposteUntil: 0,
+    precisionMark: null,
+    attackTargetId: null,
+    attackAt: -999,
+    lastAttackMode: "manual",
     crystalReadyAt: 8,
     towerAggroTeam: null,
     towerAggroUntil: 0,
@@ -526,7 +533,19 @@ function addPlayer(world, id, name = "Player") {
     relicUntil: 0,
     bossPowerUntil: 0,
     wardenReadyAt: 0,
-    input: { seq: -1, moveX: 0, moveY: 0, aimX: facing.x, aimY: facing.y, attack: false, skill1: false, skill2: false },
+    input: {
+      seq: -1,
+      moveX: 0,
+      moveY: 0,
+      aimX: facing.x,
+      aimY: facing.y,
+      attack: false,
+      attackMode: "manual",
+      skill1: false,
+      skill2: false,
+      queuedSkill1: false,
+      queuedSkill2: false
+    },
     inputFresh: false,
     lastInputAt: 0,
     connected: true,
@@ -575,6 +594,10 @@ function resetPlayerAtFountain(player) {
   player.revealUntil = 0;
   player.cinderCharges = 0;
   player.cinderUntil = 0;
+  player.riposteDamage = 0;
+  player.riposteUntil = 0;
+  player.precisionMark = null;
+  player.attackTargetId = null;
   player.towerAggroTeam = null;
   player.towerAggroUntil = 0;
   player.displaceImmuneUntil = 0;
@@ -586,6 +609,9 @@ function resetPlayerAtFountain(player) {
   player.input.skill2 = false;
   player.input.queuedSkill1 = false;
   player.input.queuedSkill2 = false;
+  player.input.queuedSkill1Context = null;
+  player.input.queuedSkill2Context = null;
+  player.input.queuedAttack = null;
 }
 function publicMatch(world) {
   return {
@@ -668,7 +694,20 @@ function playerSummary(world, player, visible, viewerId) {
     relic: player.relic,
     relicUntil: player.relicUntil,
     bossPowerUntil: player.bossPowerUntil,
+    markUntil: player.precisionMark?.until || 0,
+    markOwnerId: player.precisionMark?.sourceId || null,
+    cinderUntil: player.cinderUntil,
+    attackAt: player.attackAt,
+    attackAngle: player.attackAngle,
+    attackAimX: Number.isFinite(player.attackAngle) ? Math.cos(player.attackAngle) : 0,
+    attackAimY: Number.isFinite(player.attackAngle) ? Math.sin(player.attackAngle) : 0,
     ...player.id === viewerId ? {
+      attackTargetId: player.attackTargetId,
+      attackMode: player.lastAttackMode || player.input.attackMode || "manual",
+      attackPress: player.input.attackPress || 0,
+      riposteDamage: player.riposteDamage,
+      riposteUntil: player.riposteUntil,
+      cinderCharges: player.cinderCharges,
       skillReady: player.skillReady,
       basicReadyAt: player.basicReadyAt,
       skill1Press: player.input.skill1Press || 0,
@@ -682,9 +721,6 @@ function playerSummary(world, player, visible, viewerId) {
       xp: player.xp
     } : {}
   };
-}
-function visibleMobile(world, team, entity) {
-  return entity.team === team || isPointVisible(world, team, entity);
 }
 function publicProjectile(projectile) {
   return {
@@ -703,12 +739,19 @@ function filterSnapshot(world, viewerId) {
   const viewer = world.players[viewerId];
   if (!viewer) return null;
   const team = viewer.team;
+  const vision = visionSources(world, team);
+  const visiblePoint = (point) => vision.some((source) => distanceSquared(source, point) <= (source.radius + (point.radius || 0)) ** 2);
   const players = {};
   for (const player of Object.values(world.players)) {
-    const visible = player.team === team || isPointVisible(world, team, player) || player.revealUntil > world.matchTime;
+    const visible = player.team === team || visiblePoint(player) || player.revealUntil > world.matchTime;
     players[player.id] = playerSummary(world, player, visible, viewerId);
   }
-  const filter = (entity) => visibleMobile(world, team, entity);
+  const filter = (entity) => entity.team === team || visiblePoint(entity);
+  const own = players[viewerId];
+  if (own.attackTargetId) {
+    const target = world.players[own.attackTargetId] || world.minions.find((item) => item.id === own.attackTargetId) || world.clones.find((item) => item.id === own.attackTargetId) || world.camps.find((item) => item.id === own.attackTargetId) || world.structures[own.attackTargetId];
+    if (!target || target.hp <= 0 || !(visiblePoint(target) || target.revealUntil > world.matchTime)) own.attackTargetId = null;
+  }
   return {
     version: world.version,
     tick: world.snapshotTick,
@@ -720,16 +763,16 @@ function filterSnapshot(world, viewerId) {
     players,
     minions: world.minions.filter(filter),
     clones: world.clones.filter(filter),
-    camps: world.camps.filter((camp2) => camp2.alive && isPointVisible(world, team, camp2)),
+    camps: world.camps.filter((camp2) => camp2.alive && visiblePoint(camp2)),
     structures: world.structures,
-    projectiles: world.projectiles.filter((projectile) => isPointVisible(world, team, projectile)).map(publicProjectile),
+    projectiles: world.projectiles.filter(visiblePoint).map(publicProjectile),
     effects: world.effects.filter((effect) => {
       if (effect.kind === "defeat" && effect.targetId === viewerId) return true;
       if (!Number.isFinite(effect.x)) return true;
-      if (!isPointVisible(world, team, effect)) return false;
-      return !Number.isFinite(effect.tx) || isPointVisible(world, team, { x: effect.tx, y: effect.ty });
+      if (!visiblePoint(effect)) return false;
+      return !Number.isFinite(effect.tx) || visiblePoint({ x: effect.tx, y: effect.ty });
     }),
-    vision: visionSources(world, team)
+    vision
   };
 }
 
@@ -744,6 +787,66 @@ function seededOrder(ids, seed) {
   return ranked.map((item) => item.id);
 }
 
+// server/heroes.js
+var HEROES = Object.freeze({
+  shana: {
+    id: "shana",
+    name: "Shana",
+    nameMn: "\u0428\u0430\u043D\u0430",
+    atlas: "shana",
+    frameWidth: 181,
+    frameHeight: 181,
+    passive: "reroll",
+    skills: [
+      { id: "precision", castType: "projectile", cooldown: 8, damage: 130, range: 520, projectileSpeed: 900, markDamage: 45, markSeconds: 4, icon: "\u2726" },
+      { id: "volley", castType: "fan", cooldown: 12, damage: 40, count: 3, spread: 0.11, range: 430, slow: 0.25, slowSeconds: 1, recoil: 70, icon: "\u224B" }
+    ]
+  },
+  diamond: {
+    id: "diamond",
+    name: "Diamond",
+    nameMn: "\u0414\u0430\u0439\u043C\u043E\u043D\u0434",
+    atlas: "diamond",
+    frameWidth: 222,
+    frameHeight: 148,
+    passive: "crystalGuard",
+    skills: [
+      { id: "aegis", castType: "shield", cooldown: 12, shield: 160, duration: 3, riposteRatio: 0.4, riposteCap: 60, riposteSeconds: 5, icon: "\u25C6" },
+      { id: "repulse", castType: "line", cooldown: 10, damage: 120, range: 340, pierces: 2, knockback: 60, slow: 0.2, slowSeconds: 1, icon: "\u25C9" }
+    ]
+  },
+  scarlett: {
+    id: "scarlett",
+    name: "Scarlett",
+    nameMn: "\u0421\u043A\u0430\u0440\u043B\u0435\u0442\u0442",
+    atlas: "scarlett",
+    frameWidth: 181,
+    frameHeight: 181,
+    passive: "thirdShotBurn",
+    skills: [
+      { id: "emberLine", castType: "zone", cooldown: 10, damage: 35, pulses: 4, pulseSeconds: 0.5, windup: 0.4, radius: 105, range: 420, slow: 0.15, slowSeconds: 0.55, icon: "\u2668" },
+      { id: "cinderFocus", castType: "empower", cooldown: 12, charges: 3, bonusDamage: 20, duration: 4, speedBonus: 0.12, icon: "\u25B3" }
+    ]
+  },
+  hina: {
+    id: "hina",
+    name: "Hina",
+    nameMn: "\u0425\u0438\u043D\u0430",
+    atlas: "hina",
+    frameWidth: 181,
+    frameHeight: 181,
+    passive: "afterimage",
+    skills: [
+      { id: "shadowStep", castType: "dash", cooldown: 10, distance: 140, duration: 0.18, cloneHp: 180, cloneSeconds: 3, cloneDamage: 40, cloneShots: 3, icon: "\u27A4" },
+      { id: "moonSnare", castType: "execute", cooldown: 10, damage: 120, missingHpRatio: 0.12, missingHpCap: 60, slow: 0.2, slowSeconds: 1, range: 410, icon: "\u263E" }
+    ]
+  }
+});
+var HERO_IDS = Object.freeze(Object.keys(HEROES));
+function isHeroId(value) {
+  return typeof value === "string" && Object.hasOwn(HEROES, value);
+}
+
 // server/progression.js
 var CHOICE_SECONDS = 12;
 function derivedStats(player, now = 0) {
@@ -751,13 +854,14 @@ function derivedStats(player, now = 0) {
   const bossPower = (player.bossPowerUntil || 0) > now;
   const damageBonus = bossPower ? CAMPS.powerDamageBonus : 0;
   const speedBonus = bossPower ? CAMPS.powerSpeedBonus : 0;
+  const cinderSpeed = player.hero === "scarlett" && player.cinderUntil > now ? HEROES.scarlett.skills[1].speedBonus : 0;
   return {
     maxHp: PLAYER.hp + rank("vitality") * UPGRADES.vitality.amount,
     basicDamage: PLAYER.attackDamage * (1 + Math.min(0.2, rank("edge") * UPGRADES.edge.amount + damageBonus)),
     skillDamage: 1 + Math.min(0.23, rank("arcana") * UPGRADES.arcana.amount + damageBonus),
     basicReduction: Math.min(0.08, rank("guard") * UPGRADES.guard.amount),
     skillReduction: Math.min(0.08, rank("ward") * UPGRADES.ward.amount),
-    speed: PLAYER.speed * (1 + Math.min(0.14, rank("swift") * UPGRADES.swift.amount + speedBonus)),
+    speed: PLAYER.speed * (1 + Math.min(0.14, rank("swift") * UPGRADES.swift.amount + speedBonus)) * (1 + cinderSpeed),
     cooldown: 1 - Math.min(0.08, rank("haste") * UPGRADES.haste.amount)
   };
 }
@@ -854,64 +958,49 @@ function chooseRelic(world, player, id) {
   return true;
 }
 
-// server/heroes.js
-var HEROES = Object.freeze({
-  shana: {
-    id: "shana",
-    name: "Shana",
-    nameMn: "\u0428\u0430\u043D\u0430",
-    atlas: "shana",
-    frameWidth: 181,
-    frameHeight: 181,
-    passive: "reroll",
-    skills: [
-      { id: "precision", cooldown: 9, damage: 170, range: 520, projectileSpeed: 900, icon: "\u2726" },
-      { id: "volley", cooldown: 11, damage: 55, count: 3, spread: 0.11, range: 430, slow: 0.15, slowSeconds: 0.75, icon: "\u224B" }
-    ]
-  },
-  diamond: {
-    id: "diamond",
-    name: "Diamond",
-    nameMn: "\u0414\u0430\u0439\u043C\u043E\u043D\u0434",
-    atlas: "diamond",
-    frameWidth: 222,
-    frameHeight: 148,
-    passive: "crystalGuard",
-    skills: [
-      { id: "aegis", cooldown: 12, shield: 160, duration: 4, icon: "\u25C6" },
-      { id: "repulse", cooldown: 10, damage: 90, radius: 150, knockback: 80, slow: 0.2, slowSeconds: 1, icon: "\u25C9" }
-    ]
-  },
-  scarlett: {
-    id: "scarlett",
-    name: "Scarlett",
-    nameMn: "\u0421\u043A\u0430\u0440\u043B\u0435\u0442\u0442",
-    atlas: "scarlett",
-    frameWidth: 181,
-    frameHeight: 181,
-    passive: "thirdShotBurn",
-    skills: [
-      { id: "emberLine", cooldown: 11, damage: 140, burnDps: 15, burnSeconds: 2, range: 480, pierces: 2, icon: "\u2668" },
-      { id: "cinderFocus", cooldown: 12, charges: 3, bonusDamage: 15, duration: 6, slow: 0.1, slowSeconds: 0.65, icon: "\u25B3" }
-    ]
-  },
-  hina: {
-    id: "hina",
-    name: "Hina",
-    nameMn: "\u0425\u0438\u043D\u0430",
-    atlas: "hina",
-    frameWidth: 181,
-    frameHeight: 181,
-    passive: "afterimage",
-    skills: [
-      { id: "shadowStep", cooldown: 8, distance: 120, duration: 0.18, cloneHp: 220, cloneSeconds: 3, cloneDamage: 40, cloneShots: 4, icon: "\u27A4" },
-      { id: "moonSnare", cooldown: 11, damage: 170, slow: 0.25, slowSeconds: 1.3, range: 430, icon: "\u263E" }
-    ]
+// server/targeting.js
+var ATTACK_MODES = Object.freeze(["manual", "auto", "farm", "structure"]);
+var TARGET_PRIORITIES = Object.freeze(["nearest", "lowestHp", "lowestRatio"]);
+var attackMode = (value) => ATTACK_MODES.includes(value) ? value : "manual";
+var targetPriority = (value) => TARGET_PRIORITIES.includes(value) ? value : "nearest";
+function targetEntity(world, id) {
+  return world.players[id] || world.minions.find((unit) => unit.id === id) || world.clones.find((unit) => unit.id === id) || world.camps.find((unit) => unit.id === id) || Object.values(world.structures).find((unit) => unit.id === id);
+}
+function isTargetable(world, source, target, range, radius = 0, requireVision = true) {
+  if (!target || target.hp <= 0 || target.team === source.team) return false;
+  if (target.kind === "player" && (target.spiritUntil > world.matchTime || target.protectUntil > world.matchTime)) return false;
+  if (target.kind === "camp" && !target.alive) return false;
+  if (target.kind === "clone" && target.expiresAt <= world.matchTime) return false;
+  if (distanceSquared(source, target) > range ** 2 + 1e-6) return false;
+  if (requireVision && !isPointVisible(world, source.team, target) && !(target.kind === "player" && target.revealUntil > world.matchTime)) return false;
+  if (target.kind === "core") {
+    const tower = target.team === 0 ? world.structures.blueTower : world.structures.redTower;
+    if (tower.hp > 0) return false;
   }
-});
-var HERO_IDS = Object.freeze(Object.keys(HEROES));
-function isHeroId(value) {
-  return typeof value === "string" && Object.hasOwn(HEROES, value);
+  if ((target.kind === "tower" || target.kind === "core") && distanceSquared(source, target) > STRUCTURES[target.kind].range ** 2 + 1e-6) return false;
+  return !traceWalkableMove(source, target, radius).blocked;
+}
+function compareTargets(source, priority, a, b) {
+  const value = (target) => priority === "lowestHp" ? target.hp : priority === "lowestRatio" ? target.hp / target.maxHp : 0;
+  const hp = value(a) - value(b);
+  if (Math.abs(hp) > 1e-6) return hp;
+  const distance = distanceSquared(source, a) - distanceSquared(source, b);
+  if (Math.abs(distance) > 1e-6) return distance;
+  const sign = source.team === 0 ? 1 : -1;
+  return (a.x - b.x) * sign || (a.y - b.y) * sign || String(a.id).localeCompare(String(b.id));
+}
+function chooseAttackTarget(world, source, options = {}) {
+  const { mode = "auto", range = 430, radius = 8, structures = true } = options;
+  const priority = targetPriority(options.priority);
+  const heroes = Object.values(world.players);
+  const farm = [...world.minions, ...world.camps];
+  const buildings = structures ? Object.values(world.structures) : [];
+  const groups = mode === "farm" ? [farm] : mode === "structure" ? [buildings] : [heroes, [...farm, ...world.clones], buildings];
+  for (const group of groups) {
+    const target = group.filter((entity) => isTargetable(world, source, entity, range, radius)).sort((a, b) => compareTargets(source, priority, a, b))[0];
+    if (target) return target;
+  }
+  return null;
 }
 
 // server/inputs.js
@@ -937,7 +1026,6 @@ function startMatch(world, playerId) {
   return true;
 }
 function applyInput(world, playerId, data) {
-  var _a, _b;
   const player = world.players[playerId];
   if (!player || !data || typeof data !== "object") return false;
   const seq = Number(data.seq);
@@ -956,8 +1044,28 @@ function applyInput(world, playerId, data) {
     return counter > previous;
   };
   const press1 = pressed("skill1", skill1), press2 = pressed("skill2", skill2);
-  (_a = player.input).queuedSkill1 || (_a.queuedSkill1 = canAct && press1);
-  (_b = player.input).queuedSkill2 || (_b.queuedSkill2 = canAct && press2);
+  const capture = (key, edge) => {
+    if (!canAct || !edge || player.input[`queued${key}`]) return;
+    player.input[`queued${key}`] = true;
+    player.input[`queued${key}Context`] = {
+      auto: data[`${key.toLowerCase()}Auto`] === true,
+      aimX: aim.length ? aim.x : player.input.aimX,
+      aimY: aim.length ? aim.y : player.input.aimY
+    };
+  };
+  capture("Skill1", press1);
+  capture("Skill2", press2);
+  const mode = attackMode(data.attackMode), priority = targetPriority(data.targetPriority);
+  if (pressed("attack", data.attack === true) && canAct && !player.input.queuedAttack) {
+    player.input.queuedAttack = {
+      mode: attackMode(data.attackPressMode ?? mode),
+      priority,
+      aimX: aim.length ? aim.x : player.input.aimX,
+      aimY: aim.length ? aim.y : player.input.aimY
+    };
+  }
+  player.input.attackMode = mode;
+  player.input.targetPriority = priority;
   player.input.seq = seq;
   player.input.moveX = move.x * move.length;
   player.input.moveY = move.y * move.length;
@@ -984,11 +1092,13 @@ function applyCommand(world, playerId, type, data = {}) {
   if (type === "relic") return chooseRelic(world, player, data.id);
   return false;
 }
-function consumeSkillPress(player, index) {
+function consumeSkillCast(player, index) {
   const key = index === 0 ? "queuedSkill1" : "queuedSkill2";
   const value = player.input[key] === true;
   player.input[key] = false;
-  return value;
+  const context = player.input[`${key}Context`];
+  player.input[`${key}Context`] = null;
+  return value ? context || { auto: false, aimX: player.input.aimX, aimY: player.input.aimY } : null;
 }
 
 // server/effects.js
@@ -1000,7 +1110,10 @@ function addEffect(world, kind, data = {}, ttl = 0.35) {
     ...data
   };
   world.effects.push(effect);
-  if (world.effects.length > 64) world.effects.splice(0, world.effects.length - 64);
+  if (world.effects.length > 64) {
+    const removable = world.effects.findIndex((item) => item.kind !== "cinderZone" || item.expiresAt <= world.matchTime);
+    world.effects.splice(Math.max(0, removable), 1);
+  }
   return effect;
 }
 function updateEffects(world) {
@@ -1054,6 +1167,11 @@ function damagePlayer(world, target, amount, damageClass, sourceId) {
   adjusted = Math.max(0.01, round(adjusted, 100));
   const shieldSource = target.shieldSource;
   const absorbed = Math.min(target.shield, adjusted);
+  if (shieldSource === "aegis" && absorbed > 0 && target.hero === "diamond") {
+    const skill = HEROES.diamond.skills[0];
+    target.riposteDamage = Math.min(skill.riposteCap, (target.riposteDamage || 0) + absorbed * skill.riposteRatio);
+    target.riposteUntil = Math.max(target.riposteUntil, world.matchTime + skill.riposteSeconds);
+  }
   target.shield = Math.max(0, target.shield - absorbed);
   if (absorbed > 0 && target.shield <= 0) {
     target.shieldSource = null;
@@ -1157,6 +1275,15 @@ function pushTarget(world, target, sourceId, distance) {
 }
 function applyDamage(world, target, amount, damageClass, sourceId, status = {}, origin) {
   if (!target || target.hp <= 0 || !Number.isFinite(amount) || amount <= 0) return 0;
+  if (target.kind === "player" && (target.spiritUntil > world.matchTime || target.protectUntil > world.matchTime)) return 0;
+  if (status.consumeMark && target.precisionMark?.sourceId === sourceId && target.precisionMark.until > world.matchTime) {
+    amount += target.precisionMark.damage;
+    target.precisionMark = null;
+    addEffect(world, "markConsume", { x: target.x, y: target.y, team: entityTeam(world, sourceId) }, 0.35);
+  }
+  if (status.missingHpRatio && target.kind !== "tower" && target.kind !== "core") {
+    amount += Math.min(status.missingHpCap, Math.max(0, target.maxHp - target.hp) * status.missingHpRatio);
+  }
   const impact = { x: target.x, y: target.y };
   const deathsBefore = target.kind === "player" ? target.deaths : 0;
   let dealt = 0;
@@ -1182,6 +1309,9 @@ function applyDamage(world, target, amount, damageClass, sourceId, status = {}, 
     target.slowUntil = Math.max(target.slowUntil, world.matchTime + Math.min(1.5, status.slowSeconds || 0));
   }
   if (status.reveal && target.kind === "player") target.revealUntil = Math.max(target.revealUntil, world.matchTime + status.reveal);
+  if (status.markSeconds && !["tower", "core"].includes(target.kind)) {
+    target.precisionMark = { sourceId, until: world.matchTime + status.markSeconds, damage: status.markDamage };
+  }
   if (status.knockback) pushTarget(world, target, sourceId, Math.min(100, status.knockback));
   if (status.burnDps && target.kind !== "tower" && target.kind !== "core") {
     const dps = status.burnDps;
@@ -1237,7 +1367,11 @@ function spawnCamp(world, camp2) {
   camp2.idleSince = world.matchTime;
   camp2.lastHitBy = null;
   camp2.burn = null;
+  camp2.precisionMark = null;
   camp2.pendingStrike = null;
+  camp2.attackStartedAt = -999;
+  camp2.attackImpactAt = -999;
+  camp2.attackUntil = -999;
   camp2.cycle += 1;
   const progress = world.campProgress[camp2.side];
   progress.ids = progress.ids.filter((id) => id !== camp2.id);
@@ -1275,12 +1409,19 @@ function resetCamp(world, camp2, dt) {
     camp2.hp = Math.min(camp2.maxHp, camp2.hp + camp2.maxHp * CAMPS.resetHealRatioPerSecond * dt);
     camp2.lastHitBy = null;
   }
+  if (camp2.pendingStrike) {
+    camp2.attackStartedAt = -999;
+    camp2.attackImpactAt = -999;
+    camp2.attackUntil = -999;
+  }
   camp2.pendingStrike = null;
 }
 function resolveStrike(world, camp2, config2) {
   const strike = camp2.pendingStrike;
   if (!strike || world.matchTime < strike.at) return false;
   camp2.pendingStrike = null;
+  camp2.attackImpactAt = world.matchTime;
+  camp2.attackUntil = world.matchTime + 0.35;
   for (const player of Object.values(world.players)) {
     if (player.hp <= 0 || player.spiritUntil > world.matchTime) continue;
     const radius = strike.radius + player.radius;
@@ -1313,6 +1454,11 @@ function updateCamps(world, dt) {
       if (!camp2.pendingStrike && world.matchTime >= camp2.attackReadyAt) {
         camp2.attackReadyAt = world.matchTime + config2.cooldown + config2.windup;
         camp2.pendingStrike = { at: world.matchTime + config2.windup, x: target.x, y: target.y, radius: config2.strikeRadius };
+        camp2.attackStartedAt = world.matchTime;
+        camp2.attackImpactAt = camp2.pendingStrike.at;
+        camp2.attackUntil = camp2.pendingStrike.at + 0.35;
+        camp2.attackX = target.x;
+        camp2.attackY = target.y;
         addEffect(world, "campWarn", { x: target.x, y: target.y, radius: config2.strikeRadius, campKind: camp2.campType }, config2.windup);
       }
     } else {
@@ -1494,6 +1640,7 @@ function spawnProjectile(world, options) {
     kind: "projectile",
     projectileType: options.projectileType || "basic",
     ownerId: options.ownerId,
+    targetId: options.targetId || null,
     team: options.team,
     sourceX: source.x,
     sourceY: source.y,
@@ -1521,6 +1668,10 @@ function spawnProjectile(world, options) {
   return projectile;
 }
 function targetsFor(world, projectile) {
+  if (projectile.targetId) {
+    const target = targetEntity(world, projectile.targetId);
+    return target && !projectile.hitIds.includes(target.id) ? [target] : [];
+  }
   const targets = [];
   for (const player of Object.values(world.players)) {
     if (player.team !== projectile.team && player.spiritUntil <= world.matchTime) targets.push(player);
@@ -1552,6 +1703,19 @@ function updateProjectiles(world, dt) {
   const impacts = [];
   for (const projectile of world.projectiles) {
     if (!projectile.alive || projectile.remaining <= 0) continue;
+    if (projectile.targetId) {
+      const target = targetEntity(world, projectile.targetId);
+      const source = { team: projectile.team, x: projectile.sourceX, y: projectile.sourceY };
+      if (!isTargetable(world, source, target, Infinity, 0)) {
+        projectile.alive = false;
+        continue;
+      }
+      const length = Math.hypot(target.x - projectile.x, target.y - projectile.y);
+      if (length > 1e-6) {
+        projectile.dx = (target.x - projectile.x) / length;
+        projectile.dy = (target.y - projectile.y) / length;
+      }
+    }
     const initialBudget = Math.min(projectile.remaining, projectile.speed * dt);
     let budget = initialBudget;
     while (projectile.alive && budget > 0) {
@@ -1627,9 +1791,9 @@ function impactDistance({ projectile, hit }) {
   return distanceSquared({ x: projectile.sourceX, y: projectile.sourceY }, hit);
 }
 
-// server/players.js
+// server/attacks.js
 function fire(world, player, angle, damage, options = {}) {
-  spawnProjectile(world, {
+  return spawnProjectile(world, {
     ownerId: player.id,
     team: player.team,
     sourceX: player.x,
@@ -1645,90 +1809,120 @@ function fire(world, player, angle, damage, options = {}) {
     damageClass: options.damageClass || "basic",
     projectileType: options.projectileType,
     status: options.status,
-    pierces: options.pierces
+    pierces: options.pierces,
+    targetId: options.targetId
   });
 }
-function removeProtection(player, world) {
-  if (player.protectUntil > world.matchTime) player.protectUntil = 0;
+function consumeRiposte(player, now) {
+  const damage = player.riposteUntil > now ? player.riposteDamage || 0 : 0;
+  player.riposteDamage = 0;
+  return damage;
 }
-function basicAttack(world, player, stats) {
-  if (!player.input.attack || world.matchTime < player.basicReadyAt) return;
-  removeProtection(player, world);
+function prepareBasicAttack(world, player, stats) {
+  const press = player.input.queuedAttack;
+  player.input.queuedAttack = null;
+  if (!player.input.attack && !press) {
+    player.attackTargetId = null;
+    return;
+  }
+  if (world.matchTime < player.basicReadyAt) return;
+  const mode = attackMode(press?.mode || player.input.attackMode);
+  const target = mode !== "manual" ? chooseAttackTarget(world, player, {
+    mode,
+    range: PLAYER.attackRange,
+    priority: press?.priority || player.input.targetPriority
+  }) : null;
+  player.attackTargetId = target?.id || null;
+  if (mode !== "manual" && !target) return;
+  return { player, stats, target, press, mode };
+}
+function basicAttack(world, intent) {
+  const { player, stats, target, press, mode } = intent;
+  player.protectUntil = 0;
   player.basicReadyAt = world.matchTime + PLAYER.attackCooldown;
   let damage = stats.basicDamage;
-  const status = {};
+  const status = { consumeMark: true };
   let projectileType = "basic";
+  if (player.hero === "diamond") damage += consumeRiposte(player, world.matchTime);
   if (player.hero === "scarlett") {
     player.thirdShot = (player.thirdShot + 1) % 3;
     if (player.thirdShot === 0) {
       damage += 10;
-      status.burnDps = 3;
-      status.burnSeconds = 2;
-      status.burnClass = "basic";
+      Object.assign(status, { burnDps: 3, burnSeconds: 2, burnClass: "basic" });
       projectileType = "flame";
     }
     if (player.cinderCharges > 0 && player.cinderUntil > world.matchTime) {
-      const focus = HEROES.scarlett.skills[1];
       player.cinderCharges -= 1;
-      damage += focus.bonusDamage * stats.skillDamage;
-      status.slow = focus.slow;
-      status.slowSeconds = focus.slowSeconds;
+      damage += HEROES.scarlett.skills[1].bonusDamage * stats.skillDamage;
       projectileType = "cinder";
     }
   }
-  const angle = Math.atan2(player.input.aimY, player.input.aimX);
+  const angle = target ? Math.atan2(target.y - player.y, target.x - player.x) : Math.atan2(press?.aimY ?? player.input.aimY, press?.aimX ?? player.input.aimX);
+  player.attackAt = world.matchTime;
+  player.attackAngle = angle;
+  player.lastAttackMode = attackMode(mode);
   fire(world, player, angle, damage, {
     status,
     projectileType,
+    targetId: target?.id,
     radius: projectileType === "flame" ? 18 : void 0,
-    pierces: projectileType === "flame" ? 4 : 0
+    pierces: projectileType === "flame" && !target ? 4 : 0
   });
 }
-function skillReady(world, player, index, stats) {
-  if (world.matchTime < player.skillReady[index]) return null;
-  const skill = HEROES[player.hero]?.skills[index];
-  if (!skill) return null;
-  player.skillReady[index] = world.matchTime + skill.cooldown * stats.cooldown;
-  removeProtection(player, world);
-  return skill;
-}
-function targetsInRadius(world, player, radius) {
-  const targets = [
-    ...Object.values(world.players).filter((target) => target.team !== player.team && target.spiritUntil <= world.matchTime),
-    ...world.minions.filter((target) => target.team !== player.team),
-    ...world.clones.filter((target) => target.team !== player.team),
-    ...world.camps.filter((target) => target.alive)
-  ];
-  return targets.filter((target) => distanceSquared(target, player) <= (radius + target.radius) ** 2 && !traceWalkableMove(player, target, 0).blocked);
-}
-function blockedByObstacle(world, x, y, radius) {
-  const point = { x, y };
+
+// server/player-movement.js
+function blockedByStructure(world, point, radius) {
   return Object.values(world.structures).some((structure2) => structure2.hp > 0 && distanceSquared(point, structure2) < (radius + structure2.radius) ** 2);
 }
-function dash(world, player, skill) {
-  const origin = { x: player.x, y: player.y };
-  let direction = normalize(player.input.moveX, player.input.moveY, 0, 0);
-  if (direction.length === 0) direction = normalize(player.input.aimX, player.input.aimY, 1, 0);
+function displace(world, entity, direction, distance) {
   const desired = {
-    x: clamp(origin.x + direction.x * skill.distance, player.radius, MAP.width - player.radius),
-    y: clamp(origin.y + direction.y * skill.distance, player.radius, MAP.height - player.radius)
+    x: clamp(entity.x + direction.x * distance, entity.radius, MAP.width - entity.radius),
+    y: clamp(entity.y + direction.y * distance, entity.radius, MAP.height - entity.radius)
   };
   const resolved = traceWalkableMove(
-    origin,
+    entity,
     desired,
-    player.radius,
-    (point) => blockedByObstacle(world, point.x, point.y, player.radius)
+    entity.radius,
+    (point) => blockedByStructure(world, point, entity.radius)
   );
-  player.x = resolved.x;
-  player.y = resolved.y;
+  entity.x = resolved.x;
+  entity.y = resolved.y;
+}
+
+// server/skills.js
+var OFFENSIVE = /* @__PURE__ */ new Set(["projectile", "fan", "line", "zone", "execute"]);
+function prepareSkill(world, player, index, context) {
+  if (!context || world.matchTime < player.skillReady[index]) return null;
+  const skill = HEROES[player.hero].skills[index];
+  const target = context.auto && OFFENSIVE.has(skill.castType) ? chooseAttackTarget(world, player, {
+    range: skill.range,
+    radius: 0,
+    structures: false,
+    priority: player.input.targetPriority
+  }) : null;
+  if (context.auto && OFFENSIVE.has(skill.castType) && !target) return null;
+  const aim = target ? normalize(target.x - player.x, target.y - player.y) : normalize(context.aimX, context.aimY, 1, 0);
+  return {
+    player,
+    skill,
+    index,
+    context,
+    aim,
+    target: target ? { x: target.x, y: target.y } : null,
+    stats: derivedStats(player, world.matchTime)
+  };
+}
+function cloneAfterDash(world, player, skill, aim, context) {
+  const origin = { x: player.x, y: player.y };
+  const move = normalize(player.input.moveX, player.input.moveY, 0, 0);
+  displace(world, player, context.auto && move.length ? move : aim, skill.distance);
   world.clones.push({
     id: `c${world.nextEntityId++}`,
     kind: "clone",
     team: player.team,
     ownerId: player.id,
     hero: "hina",
-    x: origin.x,
-    y: origin.y,
+    ...origin,
     radius: 18,
     hp: skill.cloneHp,
     maxHp: skill.cloneHp,
@@ -1737,196 +1931,229 @@ function dash(world, player, skill) {
     shotsLeft: skill.cloneShots,
     damage: skill.cloneDamage
   });
-  addEffect(world, "dash", { x: origin.x, y: origin.y, tx: player.x, ty: player.y, team: player.team }, 0.28);
+  addEffect(world, "dash", { ...origin, tx: player.x, ty: player.y, team: player.team }, 0.28);
 }
-function castSkill(world, player, index, stats, instantIntents) {
-  const skill = skillReady(world, player, index, stats);
-  if (!skill) return;
-  const angle = Math.atan2(player.input.aimY, player.input.aimX);
+function createZone(world, player, skill, stats, aim, target) {
+  const desired = target || { x: player.x + aim.x * skill.range, y: player.y + aim.y * skill.range };
+  const center = traceWalkableMove(player, desired, 0);
+  const startsAt = world.matchTime + skill.windup;
+  const expiresAt = startsAt + skill.pulses * skill.pulseSeconds;
+  const zone = {
+    id: `z${world.nextEntityId++}`,
+    ownerId: player.id,
+    team: player.team,
+    x: center.x,
+    y: center.y,
+    radius: skill.radius,
+    startsAt,
+    expiresAt,
+    nextAt: startsAt,
+    pulsesLeft: skill.pulses,
+    damage: skill.damage * stats.skillDamage
+  };
+  world.zones.push(zone);
+  addEffect(world, "cinderZone", {
+    x: zone.x,
+    y: zone.y,
+    radius: zone.radius,
+    team: player.team,
+    startsAt,
+    expiresAt
+  }, expiresAt - world.matchTime);
+  return zone;
+}
+function castSkill(world, intent) {
+  const { player, skill, index, context, aim: preparedAim, target, stats } = intent;
+  const aim = target ? normalize(target.x - player.x, target.y - player.y) : preparedAim;
+  player.skillReady[index] = world.matchTime + skill.cooldown * stats.cooldown;
+  player.protectUntil = 0;
+  const origin = { x: player.x, y: player.y };
+  const angle = Math.atan2(aim.y, aim.x);
+  const options = { damageClass: "skill", projectileType: skill.id, range: skill.range };
+  let end = target || { x: player.x + aim.x * (skill.range || 0), y: player.y + aim.y * (skill.range || 0) };
   if (skill.id === "precision") {
     fire(world, player, angle, skill.damage * stats.skillDamage, {
-      damageClass: "skill",
-      projectileType: "precision",
-      range: skill.range,
+      ...options,
       speed: skill.projectileSpeed,
       radius: 11,
-      status: { reveal: 2.5 }
+      status: { reveal: skill.markSeconds, markSeconds: skill.markSeconds, markDamage: skill.markDamage * stats.skillDamage }
     });
   } else if (skill.id === "volley") {
-    for (let i = 0; i < skill.count; i += 1) fire(world, player, angle + (i - (skill.count - 1) / 2) * skill.spread, skill.damage * stats.skillDamage, {
-      damageClass: "skill",
-      projectileType: "volley",
-      range: skill.range,
-      radius: 7,
-      status: { slow: skill.slow, slowSeconds: skill.slowSeconds }
-    });
+    for (let shot = 0; shot < skill.count; shot += 1) {
+      fire(
+        world,
+        player,
+        angle + (shot - (skill.count - 1) / 2) * skill.spread,
+        skill.damage * stats.skillDamage,
+        { ...options, radius: 7, status: { consumeMark: true, slow: skill.slow, slowSeconds: skill.slowSeconds } }
+      );
+    }
+    displace(world, player, { x: -aim.x, y: -aim.y }, skill.recoil);
   } else if (skill.id === "aegis") {
     player.shield = Math.max(player.shield, skill.shield);
     player.shieldSource = "aegis";
     player.shieldUntil = world.matchTime + skill.duration;
-    addEffect(world, "shield", { x: player.x, y: player.y, team: player.team }, 0.5);
+    player.riposteDamage = 0;
+    player.riposteUntil = world.matchTime + skill.riposteSeconds;
+    addEffect(world, "shield", { ...origin, team: player.team }, 0.5);
   } else if (skill.id === "repulse") {
-    instantIntents.push({ player, skill, damage: skill.damage * stats.skillDamage });
-  } else if (skill.id === "emberLine") {
-    fire(world, player, angle, skill.damage * stats.skillDamage, {
-      damageClass: "skill",
-      projectileType: "emberLine",
-      range: skill.range,
-      radius: 15,
+    const bonus = consumeRiposte(player, world.matchTime);
+    fire(world, player, angle, skill.damage * stats.skillDamage + bonus, {
+      ...options,
+      radius: 22,
+      speed: 650,
       pierces: skill.pierces,
-      status: { burnDps: skill.burnDps * stats.skillDamage, burnSeconds: skill.burnSeconds }
+      status: { knockback: skill.knockback, slow: skill.slow, slowSeconds: skill.slowSeconds }
     });
+  } else if (skill.id === "emberLine") {
+    end = createZone(world, player, skill, stats, aim, target);
   } else if (skill.id === "cinderFocus") {
     player.cinderCharges = skill.charges;
     player.cinderUntil = world.matchTime + skill.duration;
   } else if (skill.id === "shadowStep") {
-    dash(world, player, skill);
+    cloneAfterDash(world, player, skill, aim, context);
+    end = player;
   } else if (skill.id === "moonSnare") {
     fire(world, player, angle, skill.damage * stats.skillDamage, {
-      damageClass: "skill",
-      projectileType: "moonSnare",
-      range: skill.range,
+      ...options,
       radius: 13,
-      status: { slow: skill.slow, slowSeconds: skill.slowSeconds }
+      status: {
+        missingHpRatio: skill.missingHpRatio * stats.skillDamage,
+        missingHpCap: skill.missingHpCap * stats.skillDamage,
+        slow: skill.slow,
+        slowSeconds: skill.slowSeconds
+      }
     });
   }
+  addEffect(world, "skillCast", {
+    ...origin,
+    tx: end.x,
+    ty: end.y,
+    team: player.team,
+    ownerId: player.id,
+    skillId: skill.id,
+    angle,
+    radius: skill.radius || 0
+  }, 0.45);
 }
-function resolveInstantIntents(world, intents) {
-  const hits = [];
-  for (const intent of intents) {
-    const source = { x: intent.player.x, y: intent.player.y };
-    for (const target of targetsInRadius(world, intent.player, intent.skill.radius)) {
-      hits.push({ ...intent, source, target, targetPosition: { x: target.x, y: target.y } });
-    }
-    addEffect(world, "repulse", { ...source, team: intent.player.team, radius: intent.skill.radius }, 0.45);
-  }
-  for (const hit of hits) {
-    hit.dealt = applyDamage(world, hit.target, hit.damage, "skill", hit.player.id, {
-      slow: hit.skill.slow,
-      slowSeconds: hit.skill.slowSeconds
-    });
-  }
-  for (const hit of hits) {
-    const target = hit.target;
-    if (hit.dealt <= 0 || target.kind !== "player" || target.spiritUntil > world.matchTime || world.matchTime < target.displaceImmuneUntil) continue;
-    const direction = normalize(
-      hit.targetPosition.x - hit.source.x,
-      hit.targetPosition.y - hit.source.y
-    );
-    const x = clamp(hit.targetPosition.x + direction.x * Math.min(100, hit.skill.knockback), target.radius, MAP.width - target.radius);
-    const y = clamp(hit.targetPosition.y + direction.y * Math.min(100, hit.skill.knockback), target.radius, MAP.height - target.radius);
-    const resolved = traceWalkableMove(
-      hit.targetPosition,
-      { x, y },
-      target.radius,
-      (point) => blockedByObstacle(world, point.x, point.y, target.radius)
-    );
-    target.x = resolved.x;
-    target.y = resolved.y;
-    target.displaceImmuneUntil = world.matchTime + 0.4;
-  }
-}
-function updateClone(world, clone, stats) {
-  if (clone.hp <= 0 || clone.expiresAt <= world.matchTime || world.matchTime < clone.nextShotAt || clone.shotsLeft <= 0) return;
-  const candidates = [
-    ...Object.values(world.players).filter((target2) => target2.team !== clone.team && target2.spiritUntil <= world.matchTime),
-    ...world.minions.filter((target2) => target2.team !== clone.team)
-  ].filter((target2) => distanceSquared(target2, clone) <= 340 ** 2 && isPointVisible(world, clone.team, target2) && !traceWalkableMove(clone, target2, 7).blocked);
-  const target = stableSortByDistance(candidates, clone)[0];
-  if (!target) return;
-  const direction = normalize(target.x - clone.x, target.y - clone.y);
-  clone.nextShotAt = world.matchTime + 0.75;
-  clone.shotsLeft -= 1;
-  spawnProjectile(world, {
-    ownerId: clone.ownerId,
-    team: clone.team,
-    x: clone.x,
-    y: clone.y,
-    sourceX: clone.x,
-    sourceY: clone.y,
-    dx: direction.x,
-    dy: direction.y,
-    radius: 7,
-    speed: 650,
-    range: 340,
-    damage: clone.damage * stats.skillDamage,
-    damageClass: "skill",
-    projectileType: "clone"
-  });
-}
-function updatePlayers(world, dt) {
-  const instantIntents = [];
-  const playerIds = Object.keys(world.players).sort();
-  if (world.snapshotTick % 2) playerIds.reverse();
-  for (const playerId of playerIds) {
-    const player = world.players[playerId];
-    if (!player.hero) continue;
-    if (world.roomNow - player.lastInputAt > 0.3) {
-      player.input.moveX = 0;
-      player.input.moveY = 0;
-      player.input.attack = false;
-      player.input.skill1 = false;
-      player.input.skill2 = false;
-    }
-    if (player.slowUntil <= world.matchTime) player.slowRatio = 0;
-    if (player.shieldSource === "aegis" && player.shieldUntil <= world.matchTime) {
-      player.shield = 0;
-      player.shieldSource = null;
-      player.shieldUntil = 0;
-      player.crystalReadyAt = world.matchTime + 8;
-    }
-    if (player.cinderUntil <= world.matchTime) player.cinderCharges = 0;
-    if (player.spiritUntil && player.spiritUntil <= world.matchTime) player.spiritUntil = 0;
-    const stats = derivedStats(player, world.matchTime);
-    player.maxHp = stats.maxHp;
-    let speed = stats.speed * (1 - player.slowRatio);
-    if (player.spiritUntil > world.matchTime) speed *= PLAYER.woundedSpeedRatio;
-    const direction = normalize(player.input.moveX, player.input.moveY, 0, 0);
-    let x = clamp(player.x + direction.x * direction.length * speed * dt, player.radius, MAP.width - player.radius);
-    let y = clamp(player.y + direction.y * direction.length * speed * dt, player.radius, MAP.height - player.radius);
-    if (player.spiritUntil > world.matchTime) {
-      const clamped = clampToOwnHalf({ x, y }, player.team, player.radius);
-      x = clamped.x;
-      y = clamped.y;
-    }
-    const desired = { x: roundAround(x, MAP.width / 2), y: roundAround(y, MAP.height / 2) };
-    const resolved = resolveWalkableMove(
-      player,
-      desired,
-      player.radius,
-      (point) => blockedByObstacle(world, point.x, point.y, player.radius)
-    );
-    player.x = resolved.x;
-    player.y = resolved.y;
-    const spawn = spawnPoint(player.team);
-    const atFountain = distanceSquared(player, spawn) <= PLAYER.fountainHealRadius ** 2;
-    if (atFountain && player.spiritUntil <= world.matchTime && world.matchTime - player.lastHeroDamageAt >= PLAYER.fountainHealCombatDelay) {
-      player.hp = Math.min(player.maxHp, player.hp + PLAYER.fountainHealPerSecond * dt);
-    }
-    const ownHalf = isOwnHalf(player, player.team);
-    if (player.shieldSource === "warden" && (!ownHalf || player.relic !== "warden" || player.relicUntil <= world.matchTime)) {
-      player.shield = 0;
-      player.shieldSource = null;
-      player.wardenReadyAt = world.matchTime + 8;
-    }
-    if (player.relic === "warden" && player.relicUntil > world.matchTime && ownHalf && player.shield <= 0 && world.matchTime >= player.wardenReadyAt && world.matchTime - player.lastHeroDamageAt >= 8) {
-      player.shield = 120;
-      player.shieldSource = "warden";
-    }
-    if (player.hero === "diamond" && player.shield <= 0 && world.matchTime >= player.crystalReadyAt && world.matchTime - player.lastHeroDamageAt >= 8) {
-      player.shield = 120;
-      player.shieldSource = "crystal";
-    }
-    if (player.spiritUntil > world.matchTime) continue;
-    basicAttack(world, player, stats);
-    if (consumeSkillPress(player, 0)) castSkill(world, player, 0, stats, instantIntents);
-    if (consumeSkillPress(player, 1)) castSkill(world, player, 1, stats, instantIntents);
-  }
-  resolveInstantIntents(world, instantIntents);
+function updateClones(world) {
   for (const clone of world.clones) {
     const owner = world.players[clone.ownerId];
-    if (owner) updateClone(world, clone, derivedStats(owner, world.matchTime));
+    if (!owner || clone.hp <= 0 || clone.expiresAt <= world.matchTime || world.matchTime < clone.nextShotAt || clone.shotsLeft <= 0) continue;
+    const target = chooseAttackTarget(world, clone, { range: 340, radius: 7, structures: false });
+    if (!target) continue;
+    clone.nextShotAt = world.matchTime + 0.75;
+    clone.shotsLeft -= 1;
+    const angle = Math.atan2(target.y - clone.y, target.x - clone.x);
+    fire(
+      world,
+      { ...clone, id: owner.id },
+      angle,
+      clone.damage * derivedStats(owner, world.matchTime).skillDamage,
+      { speed: 650, range: 340, radius: 7, damageClass: "skill", projectileType: "clone", targetId: target.id }
+    );
   }
+}
+function updateZones(world) {
+  for (const zone of world.zones) {
+    while (zone.pulsesLeft > 0 && world.matchTime >= zone.nextAt) {
+      zone.nextAt += HEROES.scarlett.skills[0].pulseSeconds;
+      zone.pulsesLeft -= 1;
+      const targets = [...Object.values(world.players), ...world.minions, ...world.clones, ...world.camps];
+      for (const target of targets) {
+        if (distanceSquared(zone, target) <= (zone.radius + target.radius) ** 2 && isTargetable(world, zone, target, zone.radius + target.radius, 0, false)) {
+          applyDamage(
+            world,
+            target,
+            zone.damage,
+            "skill",
+            zone.ownerId,
+            { slow: HEROES.scarlett.skills[0].slow, slowSeconds: HEROES.scarlett.skills[0].slowSeconds }
+          );
+        }
+      }
+      addEffect(world, "cinderPulse", { x: zone.x, y: zone.y, radius: zone.radius, team: zone.team }, 0.3);
+    }
+  }
+  world.zones = world.zones.filter((zone) => zone.expiresAt > world.matchTime && zone.pulsesLeft > 0);
+}
+
+// server/players.js
+function updateStatus(world, player, dt) {
+  if (world.roomNow - player.lastInputAt > 0.3) {
+    Object.assign(player.input, {
+      moveX: 0,
+      moveY: 0,
+      attack: false,
+      queuedAttack: null,
+      skill1: false,
+      skill2: false,
+      queuedSkill1: false,
+      queuedSkill2: false
+    });
+  }
+  if (player.slowUntil <= world.matchTime) player.slowRatio = 0;
+  if (player.shieldSource === "aegis" && player.shieldUntil <= world.matchTime) {
+    player.shield = 0;
+    player.shieldSource = null;
+    player.shieldUntil = 0;
+    player.crystalReadyAt = world.matchTime + 8;
+  }
+  if (player.riposteUntil <= world.matchTime) player.riposteDamage = 0;
+  if (player.cinderUntil <= world.matchTime) player.cinderCharges = 0;
+  if (player.precisionMark?.until <= world.matchTime) player.precisionMark = null;
+  if (player.spiritUntil && player.spiritUntil <= world.matchTime) player.spiritUntil = 0;
+  const stats = derivedStats(player, world.matchTime);
+  player.maxHp = stats.maxHp;
+  let speed = stats.speed * (1 - player.slowRatio);
+  if (player.spiritUntil > world.matchTime) speed *= PLAYER.woundedSpeedRatio;
+  const direction = normalize(player.input.moveX, player.input.moveY, 0, 0);
+  let x = clamp(player.x + direction.x * direction.length * speed * dt, player.radius, MAP.width - player.radius);
+  let y = clamp(player.y + direction.y * direction.length * speed * dt, player.radius, MAP.height - player.radius);
+  if (player.spiritUntil > world.matchTime) ({ x, y } = clampToOwnHalf({ x, y }, player.team, player.radius));
+  const desired = { x: roundAround(x, MAP.width / 2), y: roundAround(y, MAP.height / 2) };
+  const resolved = resolveWalkableMove(
+    player,
+    desired,
+    player.radius,
+    (point) => blockedByStructure(world, point, player.radius)
+  );
+  player.x = resolved.x;
+  player.y = resolved.y;
+  if (distanceSquared(player, spawnPoint(player.team)) <= PLAYER.fountainHealRadius ** 2 && player.spiritUntil <= world.matchTime && world.matchTime - player.lastHeroDamageAt >= PLAYER.fountainHealCombatDelay) {
+    player.hp = Math.min(player.maxHp, player.hp + PLAYER.fountainHealPerSecond * dt);
+  }
+  const ownHalf = isOwnHalf(player, player.team);
+  if (player.shieldSource === "warden" && (!ownHalf || player.relic !== "warden" || player.relicUntil <= world.matchTime)) {
+    player.shield = 0;
+    player.shieldSource = null;
+    player.wardenReadyAt = world.matchTime + 8;
+  }
+  if (player.relic === "warden" && player.relicUntil > world.matchTime && ownHalf && player.shield <= 0 && world.matchTime >= player.wardenReadyAt && world.matchTime - player.lastHeroDamageAt >= 8) {
+    player.shield = 120;
+    player.shieldSource = "warden";
+  }
+  if (player.hero === "diamond" && player.shield <= 0 && world.matchTime >= player.crystalReadyAt && world.matchTime - player.lastHeroDamageAt >= 8) {
+    player.shield = 120;
+    player.shieldSource = "crystal";
+  }
+}
+function updatePlayers(world, dt) {
+  const players = Object.values(world.players).filter((player) => player.hero);
+  for (const player of players) updateStatus(world, player, dt);
+  const intents = [];
+  for (const player of players) {
+    if (player.spiritUntil > world.matchTime) continue;
+    for (let index = 0; index < 2; index += 1) {
+      const intent = prepareSkill(world, player, index, consumeSkillCast(player, index));
+      if (intent) intents.push(intent);
+    }
+  }
+  for (const intent of intents) castSkill(world, intent);
+  const attacks = players.filter((player) => player.spiritUntil <= world.matchTime).map((player) => prepareBasicAttack(world, player, derivedStats(player, world.matchTime))).filter(Boolean);
+  for (const attack of attacks) basicAttack(world, attack);
+  updateClones(world);
+  updateZones(world);
 }
 
 // server/sim.js
@@ -1965,6 +2192,9 @@ function reconnectPlayer(world, id, name) {
   player.input.skill2 = false;
   player.input.queuedSkill1 = false;
   player.input.queuedSkill2 = false;
+  player.input.queuedSkill1Context = null;
+  player.input.queuedSkill2Context = null;
+  player.input.queuedAttack = null;
   player.inputFresh = false;
   if (world.paused && Object.values(world.players).every((other) => other.connected)) {
     world.resumeAt = world.roomNow + MATCH.reconnectResumeMs / 1e3;

@@ -69,7 +69,20 @@ function playerSummary(world, player, visible, viewerId) {
     relic: player.relic,
     relicUntil: player.relicUntil,
     bossPowerUntil: player.bossPowerUntil,
+    markUntil: player.precisionMark?.until || 0,
+    markOwnerId: player.precisionMark?.sourceId || null,
+    cinderUntil: player.cinderUntil,
+    attackAt: player.attackAt,
+    attackAngle: player.attackAngle,
+    attackAimX: Number.isFinite(player.attackAngle) ? Math.cos(player.attackAngle) : 0,
+    attackAimY: Number.isFinite(player.attackAngle) ? Math.sin(player.attackAngle) : 0,
     ...(player.id === viewerId ? {
+      attackTargetId: player.attackTargetId,
+      attackMode: player.lastAttackMode || player.input.attackMode || 'manual',
+      attackPress: player.input.attackPress || 0,
+      riposteDamage: player.riposteDamage,
+      riposteUntil: player.riposteUntil,
+      cinderCharges: player.cinderCharges,
       skillReady: player.skillReady,
       basicReadyAt: player.basicReadyAt,
       skill1Press: player.input.skill1Press || 0,
@@ -83,10 +96,6 @@ function playerSummary(world, player, visible, viewerId) {
       xp: player.xp,
     } : {}),
   };
-}
-
-function visibleMobile(world, team, entity) {
-  return entity.team === team || isPointVisible(world, team, entity);
 }
 
 function publicProjectile(projectile) {
@@ -107,12 +116,21 @@ export function filterSnapshot(world, viewerId) {
   const viewer = world.players[viewerId];
   if (!viewer) return null;
   const team = viewer.team;
+  const vision = visionSources(world, team);
+  const visiblePoint = point => vision.some(source => distanceSquared(source, point) <= (source.radius + (point.radius || 0)) ** 2);
   const players = {};
   for (const player of Object.values(world.players)) {
-    const visible = player.team === team || isPointVisible(world, team, player) || player.revealUntil > world.matchTime;
+    const visible = player.team === team || visiblePoint(player) || player.revealUntil > world.matchTime;
     players[player.id] = playerSummary(world, player, visible, viewerId);
   }
-  const filter = entity => visibleMobile(world, team, entity);
+  const filter = entity => entity.team === team || visiblePoint(entity);
+  const own = players[viewerId];
+  if (own.attackTargetId) {
+    const target = world.players[own.attackTargetId] || world.minions.find(item => item.id === own.attackTargetId)
+      || world.clones.find(item => item.id === own.attackTargetId) || world.camps.find(item => item.id === own.attackTargetId)
+      || world.structures[own.attackTargetId];
+    if (!target || target.hp <= 0 || !(visiblePoint(target) || target.revealUntil > world.matchTime)) own.attackTargetId = null;
+  }
   return {
     version: world.version,
     tick: world.snapshotTick,
@@ -124,17 +142,17 @@ export function filterSnapshot(world, viewerId) {
     players,
     minions: world.minions.filter(filter),
     clones: world.clones.filter(filter),
-    camps: world.camps.filter(camp => camp.alive && isPointVisible(world, team, camp)),
+    camps: world.camps.filter(camp => camp.alive && visiblePoint(camp)),
     structures: world.structures,
     projectiles: world.projectiles
-      .filter(projectile => isPointVisible(world, team, projectile))
+      .filter(visiblePoint)
       .map(publicProjectile),
     effects: world.effects.filter(effect => {
       if (effect.kind === 'defeat' && effect.targetId === viewerId) return true;
       if (!Number.isFinite(effect.x)) return true;
-      if (!isPointVisible(world, team, effect)) return false;
-      return !Number.isFinite(effect.tx) || isPointVisible(world, team, { x: effect.tx, y: effect.ty });
+      if (!visiblePoint(effect)) return false;
+      return !Number.isFinite(effect.tx) || visiblePoint({ x: effect.tx, y: effect.ty });
     }),
-    vision: visionSources(world, team),
+    vision,
   };
 }

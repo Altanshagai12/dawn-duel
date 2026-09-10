@@ -172,15 +172,17 @@ test('a broken Aegis cannot instantly refresh the Crystal Guard passive', () => 
   assert.equal(blue.crystalReadyAt, 28);
 });
 
-test('Scarlett Ember Line pierces exactly three units with bounded single-target damage', () => {
+test('Scarlett Ember Field warns before four bounded pulses and does not damage structures', () => {
   const { world, blue } = midWorld('scarlett');
-  const targets = [950, 1000, 1050, 1100].map((x, i) => minion(world, `line-${i}`, x));
-  applyInput(world, blue.id, { seq: 1, moveX: 0, moveY: 0, aimX: 1, aimY: 0, skill1: true });
+  const targets = [950, 1000, 1050, 1180].map((x, i) => minion(world, `line-${i}`, x));
+  applyInput(world, blue.id, { seq: 1, moveX: 0, moveY: 0, aimX: 1, aimY: 0, skill1: true, skill1Auto: true });
   updatePlayers(world, 0);
-  updateProjectiles(world, .5);
-  assert.deepEqual(targets.map(target => target.hp), [360, 360, 360, 500]);
-  assert.equal(targets[0].burn.dps, 15);
+  assert.deepEqual(targets.map(target => target.hp), [500, 500, 500, 500]);
   assert.equal(blue.skillReady[0], world.matchTime + HEROES.scarlett.skills[0].cooldown);
+  world.matchTime += 2;
+  updatePlayers(world, 0);
+  assert.deepEqual(targets.map(target => target.hp), [360, 360, 360, 500]);
+  assert.equal(world.structures.redTower.hp, STRUCTURES.tower.hp);
 });
 
 test('Scarlett empowered shots scale their small bonus with Arcana and expire after three shots', () => {
@@ -195,8 +197,8 @@ test('Scarlett empowered shots scale their small bonus with Arcana and expire af
     const shot = world.projectiles.at(-1);
     if (i < 3) {
       assert.equal(shot.projectileType, 'cinder');
-      assert.equal(shot.status.slow, .1);
-      assert.ok(shot.damage >= 65 + 15 * 1.18);
+      assert.equal(shot.status.slow, undefined);
+      assert.ok(shot.damage >= 65 + 20 * 1.18);
     } else assert.equal(shot.projectileType, 'basic');
   }
   assert.equal(blue.cinderCharges, 0);
@@ -207,9 +209,9 @@ test('Shana volley delivers three bounded slow skillshots instead of stacking co
   red.spiritUntil = 0; Object.assign(red, { x: 930, y: blue.y });
   applyInput(world, blue.id, { seq: 1, moveX: 0, moveY: 0, aimX: 1, aimY: 0, skill2: true });
   updatePlayers(world, 0); updateProjectiles(world, .2);
-  assert.equal(red.hp, 1500 - 165);
-  assert.equal(red.slowRatio, .15);
-  assert.equal(red.slowUntil, world.matchTime + .75);
+  assert.equal(red.hp, 1500 - 120);
+  assert.equal(red.slowRatio, .25);
+  assert.equal(red.slowUntil, world.matchTime + 1);
 });
 
 test('Diamond repulse cannot displace an opponent during fountain protection', () => {
@@ -232,12 +234,12 @@ test('Hina leaves a vulnerable afterimage and dead or expired clones cannot fire
   updatePlayers(world, 0);
   const clone = world.clones[0];
   assert.equal(clone.x, origin.x); assert.equal(clone.y, origin.y);
-  assert.equal(clone.hp, 220);
-  assert.ok(Math.abs(blue.x - origin.x - 120) < .001);
+  assert.equal(clone.hp, 180);
+  assert.ok(Math.abs(blue.x - origin.x - 140) < .001);
   clone.hp = 0; world.matchTime += .3;
   updatePlayers(world, 0);
   assert.equal(world.projectiles.filter(shot => shot.projectileType === 'clone').length, 0);
-  clone.hp = 220; clone.expiresAt = world.matchTime;
+  clone.hp = 180; clone.expiresAt = world.matchTime;
   updatePlayers(world, 0);
   assert.equal(world.projectiles.filter(shot => shot.projectileType === 'clone').length, 0);
 });

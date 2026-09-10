@@ -45,6 +45,7 @@ export function createWorld(seed = 20260904) {
     hostId: null,
     minions: [],
     projectiles: [],
+    zones: [],
     clones: [],
     effects: [],
     structures: {
@@ -111,6 +112,12 @@ export function addPlayer(world, id, name = 'Player') {
     thirdShot: 0,
     cinderCharges: 0,
     cinderUntil: 0,
+    riposteDamage: 0,
+    riposteUntil: 0,
+    precisionMark: null,
+    attackTargetId: null,
+    attackAt: -999,
+    lastAttackMode: 'manual',
     crystalReadyAt: 8,
     towerAggroTeam: null,
     towerAggroUntil: 0,
@@ -126,7 +133,8 @@ export function addPlayer(world, id, name = 'Player') {
     relicUntil: 0,
     bossPowerUntil: 0,
     wardenReadyAt: 0,
-    input: { seq: -1, moveX: 0, moveY: 0, aimX: facing.x, aimY: facing.y, attack: false, skill1: false, skill2: false },
+    input: { seq: -1, moveX: 0, moveY: 0, aimX: facing.x, aimY: facing.y, attack: false, attackMode: 'manual',
+      skill1: false, skill2: false, queuedSkill1: false, queuedSkill2: false },
     inputFresh: false,
     lastInputAt: 0,
     connected: true,
@@ -178,6 +186,10 @@ export function resetPlayerAtFountain(player) {
   player.revealUntil = 0;
   player.cinderCharges = 0;
   player.cinderUntil = 0;
+  player.riposteDamage = 0;
+  player.riposteUntil = 0;
+  player.precisionMark = null;
+  player.attackTargetId = null;
   player.towerAggroTeam = null;
   player.towerAggroUntil = 0;
   player.displaceImmuneUntil = 0;
@@ -189,6 +201,9 @@ export function resetPlayerAtFountain(player) {
   player.input.skill2 = false;
   player.input.queuedSkill1 = false;
   player.input.queuedSkill2 = false;
+  player.input.queuedSkill1Context = null;
+  player.input.queuedSkill2Context = null;
+  player.input.queuedAttack = null;
 }
 
 export function publicMatch(world) {

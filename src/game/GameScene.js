@@ -7,6 +7,7 @@ import { AimView } from './AimView.js';
 import { bindCanvasPointer } from './canvasPointer.js';
 import { FireFeedback } from './FireFeedback.js';
 import { smoothingAlpha } from './motion.js';
+import { registerCombatArt } from './combatArt.js';
 
 const SHEETS = {
   shana: [181, 181, './assets/heroes/shana.webp'],
@@ -24,8 +25,11 @@ export class GameScene extends Phaser.Scene {
   constructor(bridge) { super('DawnDuel'); this.bridge = bridge; this.latest = null; }
 
   preload() {
-    this.load.image('flagstone', './assets/map/flagstone-material.png');
-    this.load.image('forest', './assets/map/forest-material.png');
+    this.load.image('flagstone', './assets/map/arena-floor-v7.webp');
+    this.load.image('forest', './assets/map/arena-forest-v7.webp');
+    this.load.image('skill-art', './assets/effects/skill-atlas-v7.webp');
+    this.load.image('aegis-attack', './assets/guardians/eclipse-attack-v7.webp');
+    this.load.image('tempo-attack', './assets/guardians/stag-attack-v7.webp');
     this.load.on('loaderror', file => console.error('[dawn-duel]', { event: 'asset_load_failed', key: file?.key, url: file?.url }));
     this.load.image('tower', './assets/structures/tower.webp');
     this.load.image('core', './assets/structures/core.webp');
@@ -36,6 +40,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   create() {
+    registerCombatArt(this);
     const frames = Object.keys(SHEETS).map(key => `${key}:${this.textures.get(key).frameTotal}`).join(',');
     console.info(`[dawn-duel] scene_ready textures=${this.textures.getTextureKeys().join(',')} frames=${frames}`);
     this.cameras.main.setBounds(0, 0, MAP.width, MAP.height).setBackgroundColor('#071010');
@@ -85,7 +90,8 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setLerp(alpha, alpha);
     if (playerView?.justSnapped) this.cameras.main.centerOn(playerView.root.x, playerView.root.y);
     this.aimView?.update(playerView, input, this.bridge.preview?.());
-    this.fireFeedback?.update(playerView?.entity, this.latest?.now, input?.attack, this.views?.playing && Boolean(input?.attack !== undefined));
+    this.fireFeedback?.update(playerView?.entity, this.latest?.now, input?.attack,
+      this.views?.playing && Boolean(input?.attack !== undefined), input?.attackMode);
   }
 }
 

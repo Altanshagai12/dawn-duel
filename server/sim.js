@@ -44,6 +44,9 @@ export function reconnectPlayer(world, id, name) {
   player.input.skill2 = false;
   player.input.queuedSkill1 = false;
   player.input.queuedSkill2 = false;
+  player.input.queuedSkill1Context = null;
+  player.input.queuedSkill2Context = null;
+  player.input.queuedAttack = null;
   player.inputFresh = false;
   if (world.paused && Object.values(world.players).every(other => other.connected)) {
     world.resumeAt = world.roomNow + MATCH.reconnectResumeMs / 1000;

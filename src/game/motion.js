@@ -7,8 +7,12 @@ export function smoothingAlpha(delta, responseMs) {
 }
 
 export function structureBlocks(structures, point, radius) {
-  return structures.some(structure => structure.hp > 0
-    && (point.x - structure.x) ** 2 + (point.y - structure.y) ** 2 < (radius + structure.radius) ** 2);
+  for (const structure of structures) {
+    if (structure.hp <= 0) continue;
+    const combined = radius + structure.radius;
+    if ((point.x - structure.x) ** 2 + (point.y - structure.y) ** 2 < combined ** 2) return true;
+  }
+  return false;
 }
 
 export function predictionSpeed(player, now) {
@@ -66,20 +70,22 @@ export class EntityMotion {
     this.receivedMs = receivedMs;
   }
 
-  sample(time) {
+  sample(time, target = {}) {
     const samples = this.samples;
     while (samples.length > 2 && samples[1].time <= time) samples.shift();
     const from = samples[0], to = samples[1] || from;
     const fraction = to.time > from.time ? Math.max(0, Math.min(1, (time - from.time) / (to.time - from.time))) : 1;
-    return { x: from.x + (to.x - from.x) * fraction, y: from.y + (to.y - from.y) * fraction };
+    target.x = from.x + (to.x - from.x) * fraction;
+    target.y = from.y + (to.y - from.y) * fraction;
+    return target;
   }
 }
 
-export function predictMove(point, input, entity, now, delta, structures) {
+export function predictMove(point, input, entity, now, delta, structures, speed) {
   const rawX = input?.moveX || 0, rawY = input?.moveY || 0;
   if (rawX === 0 && rawY === 0) return { x: point.x, y: point.y };
   const divisor = Math.max(1, Math.hypot(rawX, rawY));
-  const distance = predictionSpeed(entity, now) * delta / 1000;
+  const distance = (speed ?? predictionSpeed(entity, now)) * delta / 1000;
   const radius = entity.radius || PLAYER.radius;
   let desired = {
     x: Math.max(radius, Math.min(MAP.width - radius, point.x + rawX / divisor * distance)),
@@ -98,9 +104,11 @@ export function moveView(view, { local, input, playing, now, clientMs, renderMs,
   if (local) {
     // Both the prediction anchor and rendered hero advance between snapshots.
     // Correcting against a stationary old target each frame causes rubber-band jitter.
-    if (clientMs - motion.receivedMs <= 300) {
-      motion.predicted = predictMove(motion.predicted, input, entity, now, delta, structures);
-      const next = predictMove(root, input, entity, now, delta, structures);
+    const moving = (input?.moveX || 0) !== 0 || (input?.moveY || 0) !== 0;
+    if (moving && clientMs - motion.receivedMs <= 300) {
+      const speed = predictionSpeed(entity, now);
+      motion.predicted = predictMove(motion.predicted, input, entity, now, delta, structures, speed);
+      const next = predictMove(root, input, entity, now, delta, structures, speed);
       root.x = next.x; root.y = next.y;
     }
     const error = Math.hypot(motion.predicted.x - root.x, motion.predicted.y - root.y);
@@ -114,10 +122,10 @@ export function moveView(view, { local, input, playing, now, clientMs, renderMs,
   } else if (entity.kind === 'projectile') {
     // Shorter presentation delay keeps fast shots close to their confirmed
     // impacts. Never extend the trajectory beyond the newest visible sample.
-    const target = motion.sample(renderMs + 50);
+    const target = motion.sample(renderMs + 50, motion.sampled ||= {});
     root.x = target.x; root.y = target.y;
   } else if (!['tower', 'core'].includes(entity.kind)) {
-    const target = motion.sample(renderMs);
+    const target = motion.sample(renderMs, motion.sampled ||= {});
     if (target.x === root.x && target.y === root.y) return;
     const radius = entity.radius || PLAYER.radius;
     const next = resolveWalkableMove(root, target, radius, p => structureBlocks(structures, p, radius));
