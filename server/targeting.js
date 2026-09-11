@@ -1,4 +1,4 @@
-import { STRUCTURES } from './config.js';
+import { PLAYER, STRUCTURES } from './config.js';
 import { isPointVisible } from './fog.js';
 import { traceWalkableMove } from './geometry.js';
 import { distanceSquared } from './math.js';
@@ -42,7 +42,7 @@ function compareTargets(source, priority, a, b) {
 }
 
 export function chooseAttackTarget(world, source, options = {}) {
-  const { mode = 'auto', range = 430, radius = 8, structures = true } = options;
+  const { mode = 'auto', range = PLAYER.attackRange, radius = PLAYER.projectileRadius, structures = true } = options;
   const priority = targetPriority(options.priority);
   const heroes = Object.values(world.players);
   const farm = [...world.minions, ...world.camps];

@@ -1,4 +1,4 @@
-import { CAMPS, PLAYER, RELICS, UPGRADES, XP_THRESHOLDS } from './config.js';
+import { BOSS_POWERS, CAMPS, PLAYER, RELICS, UPGRADES, XP_THRESHOLDS } from './config.js';
 import { seededOrder } from './random.js';
 import { HEROES } from './heroes.js';
 
@@ -6,18 +6,16 @@ const CHOICE_SECONDS = 12;
 
 export function derivedStats(player, now = 0) {
   const rank = id => Math.min(UPGRADES[id].maxRank, Math.max(0, Number(player.ranks[id] || 0)));
-  const bossPower = (player.bossPowerUntil || 0) > now;
-  const damageBonus = bossPower ? CAMPS.powerDamageBonus : 0;
-  const speedBonus = bossPower ? CAMPS.powerSpeedBonus : 0;
+  const aegisRecovery = player.bossAegisUntil > now ? BOSS_POWERS.aegis.cooldownReduction : 0;
   const cinderSpeed = player.hero === 'scarlett' && player.cinderUntil > now ? HEROES.scarlett.skills[1].speedBonus : 0;
   return {
     maxHp: PLAYER.hp + rank('vitality') * UPGRADES.vitality.amount,
-    basicDamage: PLAYER.attackDamage * (1 + Math.min(0.2, rank('edge') * UPGRADES.edge.amount + damageBonus)),
-    skillDamage: 1 + Math.min(0.23, rank('arcana') * UPGRADES.arcana.amount + damageBonus),
+    basicDamage: PLAYER.attackDamage * (1 + Math.min(0.2, rank('edge') * UPGRADES.edge.amount)),
+    skillDamage: 1 + Math.min(0.23, rank('arcana') * UPGRADES.arcana.amount),
     basicReduction: Math.min(0.08, rank('guard') * UPGRADES.guard.amount),
     skillReduction: Math.min(0.08, rank('ward') * UPGRADES.ward.amount),
-    speed: PLAYER.speed * (1 + Math.min(0.14, rank('swift') * UPGRADES.swift.amount + speedBonus)) * (1 + cinderSpeed),
-    cooldown: 1 - Math.min(0.08, rank('haste') * UPGRADES.haste.amount),
+    speed: PLAYER.speed * (1 + Math.min(0.14, rank('swift') * UPGRADES.swift.amount)) * (1 + cinderSpeed),
+    cooldown: 1 - Math.min(BOSS_POWERS.aegis.totalCooldownCap, Math.min(0.08, rank('haste') * UPGRADES.haste.amount) + aegisRecovery),
   };
 }
 
@@ -35,6 +33,7 @@ export function createUpgradeOffer(world, player, reroll = false) {
   const salt = Math.imul((player.offerNumber || player.level) + (reroll ? 97 : 0), 2654435761);
   const ordered = seededOrder(ids, (world.matchSeed ^ salt) >>> 0);
   player.offer = [...ordered.filter(id => !previous.includes(id)), ...ordered.filter(id => previous.includes(id))].slice(0, 3);
+  player.offerId = `u:${player.offerNumber}:${reroll ? 1 : 0}`;
   if (!reroll) player.offerExpiresAt = world.matchTime + CHOICE_SECONDS;
   return player.offer;
 }
@@ -77,6 +76,7 @@ export function chooseUpgrade(world, player, id) {
     player.hp = Math.min(player.maxHp, player.hp + upgrade.amount);
   }
   player.offer = null;
+  player.offerId = null;
   player.offerExpiresAt = 0;
   if (player.queuedOffers > 0) {
     player.queuedOffers -= 1;
@@ -107,7 +107,8 @@ export function updateOffers(world) {
 }
 
 export function offerRelic(world, player) {
-  player.relicOffer = { ids: Object.keys(RELICS), expiresAt: world.matchTime + CHOICE_SECONDS };
+  player.relicOfferNumber = (player.relicOfferNumber || 0) + 1;
+  player.relicOffer = { id: `r:${player.relicOfferNumber}`, ids: Object.keys(RELICS), expiresAt: world.matchTime + CHOICE_SECONDS };
 }
 
 export function chooseRelic(world, player, id) {

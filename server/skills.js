@@ -29,7 +29,7 @@ function cloneAfterDash(world, player, skill, aim, context) {
   displace(world, player, context.auto && move.length ? move : aim, skill.distance);
   world.clones.push({ id: `c${world.nextEntityId++}`, kind: 'clone', team: player.team,
     ownerId: player.id, hero: 'hina', ...origin, radius: 18, hp: skill.cloneHp, maxHp: skill.cloneHp,
-    expiresAt: world.matchTime + skill.cloneSeconds, nextShotAt: world.matchTime + .2,
+    expiresAt: world.matchTime + skill.cloneSeconds, nextShotAt: world.matchTime + skill.cloneWindup,
     shotsLeft: skill.cloneShots, damage: skill.cloneDamage });
   addEffect(world, 'dash', { ...origin, tx: player.x, ty: player.y, team: player.team }, .28);
 }
@@ -94,16 +94,17 @@ export function castSkill(world, intent) {
 }
 
 export function updateClones(world) {
+  const config = HEROES.hina.skills[0];
   for (const clone of world.clones) {
     const owner = world.players[clone.ownerId];
     if (!owner || clone.hp <= 0 || clone.expiresAt <= world.matchTime
       || world.matchTime < clone.nextShotAt || clone.shotsLeft <= 0) continue;
-    const target = chooseAttackTarget(world, clone, { range: 340, radius: 7, structures: false });
+    const target = chooseAttackTarget(world, clone, { range: config.cloneRange, radius: 7, structures: false });
     if (!target) continue;
-    clone.nextShotAt = world.matchTime + .75; clone.shotsLeft -= 1;
+    clone.nextShotAt = world.matchTime + config.cloneInterval; clone.shotsLeft -= 1;
     const angle = Math.atan2(target.y - clone.y, target.x - clone.x);
     fire(world, { ...clone, id: owner.id }, angle, clone.damage * derivedStats(owner, world.matchTime).skillDamage,
-      { speed: 650, range: 340, radius: 7, damageClass: 'skill', projectileType: 'clone', targetId: target.id });
+      { speed: 650, range: config.cloneRange, radius: 7, damageClass: 'skill', projectileType: 'clone', targetId: target.id });
   }
 }
 

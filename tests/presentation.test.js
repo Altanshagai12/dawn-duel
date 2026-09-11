@@ -36,7 +36,7 @@ test('wave and reward announcements remain readable across 15Hz snapshots then e
   assert.equal(state.update(snapshot, {}, labels), 'WAVE 1');
   snapshot.now += .067; assert.equal(state.update(snapshot, {}, labels), 'WAVE 1');
   snapshot.now = 16.41; assert.equal(state.update(snapshot, {}, labels), '');
-  snapshot.now = 30; assert.equal(state.update(snapshot, { bossPowerUntil: 60 }, labels), 'POWER · 30s');
+  snapshot.now = 30; assert.equal(state.update(snapshot, { bossAegisUntil: 60 }, labels, 'en'), '◆ BLUE AEGIS · 30s');
   state.reset(); snapshot.now = 0; snapshot.match.wave = 0;
   assert.equal(state.update(snapshot, {}, labels), '');
 });

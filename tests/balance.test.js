@@ -10,8 +10,8 @@ import { addPlayer, createWorld } from '../server/world.js';
 
 const HEROES = ['shana', 'diamond', 'scarlett', 'hina'];
 
-function simulate(blueHero, redHero) {
-  const world = createWorld(20260904);
+function simulate(blueHero, redHero, seed = 20260904) {
+  const world = createWorld(seed);
   addPlayer(world, 'blue', 'Blue Bot'); addPlayer(world, 'red', 'Red Bot');
   applyCommand(world, 'blue', 'select_hero', { hero: blueHero });
   applyCommand(world, 'red', 'select_hero', { hero: redHero });
@@ -88,13 +88,16 @@ function simulateProgress(blueHero = 'shana', redHero = 'diamond') {
 
 test('all hero matchups conclude by ten minutes without team-order bias', () => {
   const outcomes = [];
-  for (const blue of HEROES) for (const red of HEROES) {
-    const world = simulate(blue, red);
+  // Offer ordering changes objective races: sample both fixed seeds rather
+  // than forcing the same winner from every legitimate upgrade sequence.
+  const seeds = [42, 20260904];
+  for (const seed of seeds) for (const blue of HEROES) for (const red of HEROES) {
+    const world = simulate(blue, red, seed);
     assert.equal(world.phase, 'finished', `${blue} vs ${red} did not finish`);
     assert.ok(world.matchTime <= 600.01);
     assert.notEqual(world.finishReason, 'time');
     outcomes.push({
-      blue, red, winner: world.winnerTeam, time: world.matchTime,
+      seed, blue, red, winner: world.winnerTeam, time: world.matchTime,
       level: world.playerOrder.map(id => world.players[id].level),
       xp: world.playerOrder.map(id => world.players[id].xp),
       kills: world.playerOrder.map(id => world.players[id].kills),
@@ -108,7 +111,7 @@ test('all hero matchups conclude by ten minutes without team-order bias', () => 
   const redWins = outcomes.filter(result => result.winner === 1).length;
   assert.ok(Math.abs(blueWins - redWins) <= 4, `side skew ${blueWins}-${redWins}`);
   const nonMirrorDraws = outcomes.filter(result => result.blue !== result.red && result.winner === null);
-  assert.ok(nonMirrorDraws.length <= 3, `non-mirror draw rate ${nonMirrorDraws.length}/12 ${JSON.stringify(outcomes)}`);
+  assert.ok(nonMirrorDraws.length <= 3 * seeds.length, `non-mirror draw rate ${nonMirrorDraws.length}/${12 * seeds.length} ${JSON.stringify(outcomes)}`);
   for (const result of outcomes.filter(item => item.blue === item.red)) {
     assert.equal(result.winner, null, `mirror result ${JSON.stringify(result)}`);
   }
@@ -118,10 +121,10 @@ test('all hero matchups conclude by ten minutes without team-order bias', () => 
     const losses = matches.filter(result => result.winner !== null && (result.winner === 0 ? result.blue : result.red) !== hero).length;
     assert.ok(wins > 0 && losses > 0, `${hero} must have both a matchup strength and a counter (${wins}W/${losses}L)`);
   }
-  for (const blue of HEROES) for (const red of HEROES) {
+  for (const seed of seeds) for (const blue of HEROES) for (const red of HEROES) {
     if (blue >= red) continue;
-    const forward = outcomes.find(result => result.blue === blue && result.red === red);
-    const reverse = outcomes.find(result => result.blue === red && result.red === blue);
+    const forward = outcomes.find(result => result.seed === seed && result.blue === blue && result.red === red);
+    const reverse = outcomes.find(result => result.seed === seed && result.blue === red && result.red === blue);
     if (forward.winner === null || reverse.winner === null) continue;
     const forwardHero = forward.winner === 0 ? forward.blue : forward.red;
     const reverseHero = reverse.winner === 0 ? reverse.blue : reverse.red;

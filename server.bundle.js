@@ -122,10 +122,18 @@ var CAMPS = Object.freeze({
   attackRange: 72,
   aegis: { hp: 950, radius: 34, damage: 54, cooldown: 1.2, windup: 0.5, strikeRadius: 72, slow: 0.2, slowSeconds: 0.8, xp: 140 },
   tempo: { hp: 1200, radius: 38, damage: 66, cooldown: 1.35, windup: 0.58, strikeRadius: 92, knockback: 45, xp: 180 },
-  relicSeconds: 45,
-  powerSeconds: 30,
-  powerDamageBonus: 0.03,
-  powerSpeedBonus: 0.03
+  relicSeconds: 45
+});
+var BOSS_POWERS = Object.freeze({
+  aegis: Object.freeze({
+    id: "aegis",
+    duration: 30,
+    cooldownReduction: 0.04,
+    totalCooldownCap: 0.12,
+    guardDamage: 35,
+    guardCooldown: 8
+  }),
+  tempo: Object.freeze({ id: "tempo", duration: 30, hitDamage: 18, hitCooldown: 3, slow: 0.12, slowSeconds: 0.6 })
 });
 var VISION = Object.freeze({
   hero: 420,
@@ -379,6 +387,145 @@ function clampToOwnHalf(point, team, radius = 0) {
   return lanePoint(limit, offset);
 }
 
+// server/effects.js
+function addEffect(world, kind, data = {}, ttl = 0.35) {
+  const effect = {
+    id: `fx${world.nextEntityId++}`,
+    kind,
+    expiresAt: world.matchTime + ttl,
+    ...data
+  };
+  world.effects.push(effect);
+  if (world.effects.length > 64) {
+    const removable = world.effects.findIndex((item) => item.kind !== "cinderZone" || item.expiresAt <= world.matchTime);
+    world.effects.splice(Math.max(0, removable), 1);
+  }
+  return effect;
+}
+function updateEffects(world) {
+  world.effects = world.effects.filter((effect) => effect.expiresAt > world.matchTime);
+}
+
+// server/boss-powers.js
+var fields = { aegis: ["bossAegisUntil", "bossAegisReadyAt"], tempo: ["bossTempoUntil", "bossTempoReadyAt"] };
+function grantBossPower(world, player, power) {
+  const config2 = BOSS_POWERS[power];
+  if (!player || !config2 || world.phase !== "playing" || player.spiritUntil > world.matchTime) return false;
+  const [until, ready] = fields[power];
+  player[until] = world.matchTime + config2.duration;
+  player[ready] ?? (player[ready] = 0);
+  addEffect(world, "bossPower", {
+    power,
+    ownerId: player.id,
+    targetId: player.id,
+    team: player.team,
+    x: player.x,
+    y: player.y,
+    until: player[until]
+  }, 0.9);
+  return true;
+}
+function clearBossPowers(player) {
+  for (const [until, ready] of Object.values(fields)) {
+    player[until] = 0;
+    player[ready] = 0;
+  }
+}
+function emitBossProc(world, player, power, target, amount) {
+  addEffect(world, "bossPowerProc", {
+    power,
+    ownerId: player.id,
+    team: player.team,
+    x: target.x,
+    y: target.y,
+    tx: target.x,
+    ty: target.y,
+    amount: Math.round(amount * 100) / 100
+  }, 0.45);
+}
+function consumeTempo(world, source, target, damageClass, status) {
+  if (!source || damageClass !== "basic" || !status.tempoEligible || source.team === target.team || ["tower", "core"].includes(target.kind) || !(source.bossTempoUntil > world.matchTime) || world.matchTime < (source.bossTempoReadyAt || 0)) return 0;
+  source.bossTempoReadyAt = world.matchTime + BOSS_POWERS.tempo.hitCooldown;
+  return BOSS_POWERS.tempo.hitDamage;
+}
+function blockBossDamage(world, target, source, amount, damageClass, status) {
+  if (!source || source.team === target.team || !status.directHeroHit || !["basic", "skill"].includes(damageClass) || !(target.bossAegisUntil > world.matchTime) || world.matchTime < (target.bossAegisReadyAt || 0)) return 0;
+  const blocked = Math.min(amount, BOSS_POWERS.aegis.guardDamage);
+  if (blocked <= 0) return 0;
+  target.bossAegisReadyAt = world.matchTime + BOSS_POWERS.aegis.guardCooldown;
+  emitBossProc(world, target, "aegis", target, blocked);
+  return blocked;
+}
+function tempoHpBonus(before, total, bonus, blocked = 0) {
+  const hpLoss = (damage) => Math.min(before.hp, Math.max(0, damage - before.shield));
+  const base = Math.max(0, total - bonus);
+  return Math.max(0, hpLoss(total - blocked) - hpLoss(base - Math.min(blocked, base)));
+}
+
+// server/heroes.js
+var HEROES = Object.freeze({
+  shana: {
+    id: "shana",
+    name: "Shana",
+    nameMn: "\u0428\u0430\u043D\u0430",
+    atlas: "shana",
+    frameWidth: 181,
+    frameHeight: 181,
+    passive: "reroll",
+    passiveDetail: { kind: "offerReroll", perOffer: 1 },
+    skills: [
+      { id: "precision", castType: "projectile", cooldown: 8, damage: 130, range: 520, projectileSpeed: 900, markDamage: 45, markSeconds: 4, icon: "\u2726" },
+      { id: "volley", castType: "fan", cooldown: 12, damage: 40, count: 3, spread: 0.11, range: 430, slow: 0.25, slowSeconds: 1, recoil: 70, icon: "\u224B" }
+    ]
+  },
+  diamond: {
+    id: "diamond",
+    name: "Diamond",
+    nameMn: "\u0414\u0430\u0439\u043C\u043E\u043D\u0434",
+    atlas: "diamond",
+    frameWidth: 222,
+    frameHeight: 148,
+    passive: "crystalGuard",
+    passiveDetail: { kind: "outOfCombatShield", shield: 120, recovery: 8 },
+    skills: [
+      { id: "aegis", castType: "shield", cooldown: 12, shield: 160, duration: 3, riposteRatio: 0.4, riposteCap: 60, riposteSeconds: 5, icon: "\u25C6" },
+      { id: "repulse", castType: "line", cooldown: 10, damage: 120, range: 340, pierces: 2, knockback: 60, slow: 0.2, slowSeconds: 1, icon: "\u25C9" }
+    ]
+  },
+  scarlett: {
+    id: "scarlett",
+    name: "Scarlett",
+    nameMn: "\u0421\u043A\u0430\u0440\u043B\u0435\u0442\u0442",
+    atlas: "scarlett",
+    frameWidth: 181,
+    frameHeight: 181,
+    passive: "thirdShotBurn",
+    passiveDetail: { kind: "thirdShot", every: 3, bonusDamage: 10, burnDps: 3, burnSeconds: 2 },
+    skills: [
+      { id: "emberLine", castType: "zone", cooldown: 10, damage: 35, pulses: 4, pulseSeconds: 0.5, windup: 0.4, radius: 105, range: 420, slow: 0.15, slowSeconds: 0.55, icon: "\u2668" },
+      { id: "cinderFocus", castType: "empower", cooldown: 12, charges: 3, bonusDamage: 20, duration: 4, speedBonus: 0.12, icon: "\u25B3" }
+    ]
+  },
+  hina: {
+    id: "hina",
+    name: "Hina",
+    nameMn: "\u0425\u0438\u043D\u0430",
+    atlas: "hina",
+    frameWidth: 181,
+    frameHeight: 181,
+    passive: "afterimage",
+    passiveDetail: { kind: "dashAfterimage", skillId: "shadowStep" },
+    skills: [
+      { id: "shadowStep", castType: "dash", cooldown: 10, distance: 140, duration: 0.18, cloneHp: 180, cloneSeconds: 3, cloneDamage: 40, cloneShots: 3, cloneRange: 340, cloneInterval: 0.75, cloneWindup: 0.2, icon: "\u27A4" },
+      { id: "moonSnare", castType: "execute", cooldown: 10, damage: 120, missingHpRatio: 0.12, missingHpCap: 60, slow: 0.2, slowSeconds: 1, range: 410, icon: "\u263E" }
+    ]
+  }
+});
+var HERO_IDS = Object.freeze(Object.keys(HEROES));
+function isHeroId(value) {
+  return typeof value === "string" && Object.hasOwn(HEROES, value);
+}
+
 // server/world.js
 function structure(id, team, kind, x, y) {
   const config2 = STRUCTURES[kind];
@@ -518,20 +665,26 @@ function addPlayer(world, id, name = "Player") {
     attackTargetId: null,
     attackAt: -999,
     lastAttackMode: "manual",
-    crystalReadyAt: 8,
+    crystalReadyAt: HEROES.diamond.passiveDetail.recovery,
     towerAggroTeam: null,
     towerAggroUntil: 0,
     ranks: {},
     offer: null,
+    offerId: null,
+    choiceReceipts: [],
     offerNumber: 0,
     offerRerolled: false,
     offerExpiresAt: 0,
     queuedOffers: 0,
     rerollLevel: 0,
     relicOffer: null,
+    relicOfferNumber: 0,
     relic: null,
     relicUntil: 0,
-    bossPowerUntil: 0,
+    bossAegisUntil: 0,
+    bossTempoUntil: 0,
+    bossAegisReadyAt: 0,
+    bossTempoReadyAt: 0,
     wardenReadyAt: 0,
     input: {
       seq: -1,
@@ -601,7 +754,7 @@ function resetPlayerAtFountain(player) {
   player.towerAggroTeam = null;
   player.towerAggroUntil = 0;
   player.displaceImmuneUntil = 0;
-  player.bossPowerUntil = 0;
+  clearBossPowers(player);
   player.input.moveX = 0;
   player.input.moveY = 0;
   player.input.attack = false;
@@ -693,10 +846,13 @@ function playerSummary(world, player, visible, viewerId) {
     slowRatio: player.slowRatio,
     relic: player.relic,
     relicUntil: player.relicUntil,
-    bossPowerUntil: player.bossPowerUntil,
+    bossAegisUntil: player.bossAegisUntil,
+    bossTempoUntil: player.bossTempoUntil,
     markUntil: player.precisionMark?.until || 0,
     markOwnerId: player.precisionMark?.sourceId || null,
     cinderUntil: player.cinderUntil,
+    cinderCharges: player.cinderCharges,
+    riposteReady: player.riposteUntil > world.matchTime && player.riposteDamage > 0,
     attackAt: player.attackAt,
     attackAngle: player.attackAngle,
     attackAimX: Number.isFinite(player.attackAngle) ? Math.cos(player.attackAngle) : 0,
@@ -705,18 +861,23 @@ function playerSummary(world, player, visible, viewerId) {
       attackTargetId: player.attackTargetId,
       attackMode: player.lastAttackMode || player.input.attackMode || "manual",
       attackPress: player.input.attackPress || 0,
+      inputSeq: player.input.seq,
+      inputAgeMs: Math.max(0, Math.min(300, (world.roomNow - player.lastInputAt) * 1e3)),
+      bossAegisReadyAt: player.bossAegisReadyAt,
+      bossTempoReadyAt: player.bossTempoReadyAt,
       riposteDamage: player.riposteDamage,
       riposteUntil: player.riposteUntil,
-      cinderCharges: player.cinderCharges,
       skillReady: player.skillReady,
       basicReadyAt: player.basicReadyAt,
       skill1Press: player.input.skill1Press || 0,
       skill2Press: player.input.skill2Press || 0,
       guardianProgress: [0, 1].map((side) => world.campProgress[side].killerId === viewerId ? world.campProgress[side].ids.length : 0),
       offer: player.offer,
+      offerId: player.offerId,
       offerExpiresAt: player.offerExpiresAt,
       offerRerolled: Boolean(player.offerRerolled),
       relicOffer: player.relicOffer,
+      choiceReceipts: (player.choiceReceipts || []).slice(-4),
       ranks: player.ranks,
       xp: player.xp
     } : {}
@@ -787,82 +948,20 @@ function seededOrder(ids, seed) {
   return ranked.map((item) => item.id);
 }
 
-// server/heroes.js
-var HEROES = Object.freeze({
-  shana: {
-    id: "shana",
-    name: "Shana",
-    nameMn: "\u0428\u0430\u043D\u0430",
-    atlas: "shana",
-    frameWidth: 181,
-    frameHeight: 181,
-    passive: "reroll",
-    skills: [
-      { id: "precision", castType: "projectile", cooldown: 8, damage: 130, range: 520, projectileSpeed: 900, markDamage: 45, markSeconds: 4, icon: "\u2726" },
-      { id: "volley", castType: "fan", cooldown: 12, damage: 40, count: 3, spread: 0.11, range: 430, slow: 0.25, slowSeconds: 1, recoil: 70, icon: "\u224B" }
-    ]
-  },
-  diamond: {
-    id: "diamond",
-    name: "Diamond",
-    nameMn: "\u0414\u0430\u0439\u043C\u043E\u043D\u0434",
-    atlas: "diamond",
-    frameWidth: 222,
-    frameHeight: 148,
-    passive: "crystalGuard",
-    skills: [
-      { id: "aegis", castType: "shield", cooldown: 12, shield: 160, duration: 3, riposteRatio: 0.4, riposteCap: 60, riposteSeconds: 5, icon: "\u25C6" },
-      { id: "repulse", castType: "line", cooldown: 10, damage: 120, range: 340, pierces: 2, knockback: 60, slow: 0.2, slowSeconds: 1, icon: "\u25C9" }
-    ]
-  },
-  scarlett: {
-    id: "scarlett",
-    name: "Scarlett",
-    nameMn: "\u0421\u043A\u0430\u0440\u043B\u0435\u0442\u0442",
-    atlas: "scarlett",
-    frameWidth: 181,
-    frameHeight: 181,
-    passive: "thirdShotBurn",
-    skills: [
-      { id: "emberLine", castType: "zone", cooldown: 10, damage: 35, pulses: 4, pulseSeconds: 0.5, windup: 0.4, radius: 105, range: 420, slow: 0.15, slowSeconds: 0.55, icon: "\u2668" },
-      { id: "cinderFocus", castType: "empower", cooldown: 12, charges: 3, bonusDamage: 20, duration: 4, speedBonus: 0.12, icon: "\u25B3" }
-    ]
-  },
-  hina: {
-    id: "hina",
-    name: "Hina",
-    nameMn: "\u0425\u0438\u043D\u0430",
-    atlas: "hina",
-    frameWidth: 181,
-    frameHeight: 181,
-    passive: "afterimage",
-    skills: [
-      { id: "shadowStep", castType: "dash", cooldown: 10, distance: 140, duration: 0.18, cloneHp: 180, cloneSeconds: 3, cloneDamage: 40, cloneShots: 3, icon: "\u27A4" },
-      { id: "moonSnare", castType: "execute", cooldown: 10, damage: 120, missingHpRatio: 0.12, missingHpCap: 60, slow: 0.2, slowSeconds: 1, range: 410, icon: "\u263E" }
-    ]
-  }
-});
-var HERO_IDS = Object.freeze(Object.keys(HEROES));
-function isHeroId(value) {
-  return typeof value === "string" && Object.hasOwn(HEROES, value);
-}
-
 // server/progression.js
 var CHOICE_SECONDS = 12;
 function derivedStats(player, now = 0) {
   const rank = (id) => Math.min(UPGRADES[id].maxRank, Math.max(0, Number(player.ranks[id] || 0)));
-  const bossPower = (player.bossPowerUntil || 0) > now;
-  const damageBonus = bossPower ? CAMPS.powerDamageBonus : 0;
-  const speedBonus = bossPower ? CAMPS.powerSpeedBonus : 0;
+  const aegisRecovery = player.bossAegisUntil > now ? BOSS_POWERS.aegis.cooldownReduction : 0;
   const cinderSpeed = player.hero === "scarlett" && player.cinderUntil > now ? HEROES.scarlett.skills[1].speedBonus : 0;
   return {
     maxHp: PLAYER.hp + rank("vitality") * UPGRADES.vitality.amount,
-    basicDamage: PLAYER.attackDamage * (1 + Math.min(0.2, rank("edge") * UPGRADES.edge.amount + damageBonus)),
-    skillDamage: 1 + Math.min(0.23, rank("arcana") * UPGRADES.arcana.amount + damageBonus),
+    basicDamage: PLAYER.attackDamage * (1 + Math.min(0.2, rank("edge") * UPGRADES.edge.amount)),
+    skillDamage: 1 + Math.min(0.23, rank("arcana") * UPGRADES.arcana.amount),
     basicReduction: Math.min(0.08, rank("guard") * UPGRADES.guard.amount),
     skillReduction: Math.min(0.08, rank("ward") * UPGRADES.ward.amount),
-    speed: PLAYER.speed * (1 + Math.min(0.14, rank("swift") * UPGRADES.swift.amount + speedBonus)) * (1 + cinderSpeed),
-    cooldown: 1 - Math.min(0.08, rank("haste") * UPGRADES.haste.amount)
+    speed: PLAYER.speed * (1 + Math.min(0.14, rank("swift") * UPGRADES.swift.amount)) * (1 + cinderSpeed),
+    cooldown: 1 - Math.min(BOSS_POWERS.aegis.totalCooldownCap, Math.min(0.08, rank("haste") * UPGRADES.haste.amount) + aegisRecovery)
   };
 }
 function availableUpgrades(player) {
@@ -878,6 +977,7 @@ function createUpgradeOffer(world, player, reroll = false) {
   const salt = Math.imul((player.offerNumber || player.level) + (reroll ? 97 : 0), 2654435761);
   const ordered = seededOrder(ids, (world.matchSeed ^ salt) >>> 0);
   player.offer = [...ordered.filter((id) => !previous.includes(id)), ...ordered.filter((id) => previous.includes(id))].slice(0, 3);
+  player.offerId = `u:${player.offerNumber}:${reroll ? 1 : 0}`;
   if (!reroll) player.offerExpiresAt = world.matchTime + CHOICE_SECONDS;
   return player.offer;
 }
@@ -916,6 +1016,7 @@ function chooseUpgrade(world, player, id) {
     player.hp = Math.min(player.maxHp, player.hp + upgrade.amount);
   }
   player.offer = null;
+  player.offerId = null;
   player.offerExpiresAt = 0;
   if (player.queuedOffers > 0) {
     player.queuedOffers -= 1;
@@ -943,7 +1044,8 @@ function updateOffers(world) {
   }
 }
 function offerRelic(world, player) {
-  player.relicOffer = { ids: Object.keys(RELICS), expiresAt: world.matchTime + CHOICE_SECONDS };
+  player.relicOfferNumber = (player.relicOfferNumber || 0) + 1;
+  player.relicOffer = { id: `r:${player.relicOfferNumber}`, ids: Object.keys(RELICS), expiresAt: world.matchTime + CHOICE_SECONDS };
 }
 function chooseRelic(world, player, id) {
   if (world.phase !== "playing" || !player?.relicOffer?.ids?.includes(id) || !Object.hasOwn(RELICS, id)) return false;
@@ -956,6 +1058,64 @@ function chooseRelic(world, player, id) {
   player.relicOffer = null;
   player.wardenReadyAt = world.matchTime;
   return true;
+}
+
+// server/choice-commands.js
+var CHOICE_TYPES = /* @__PURE__ */ new Set(["upgrade", "relic", "reroll"]);
+var validKey = (value) => typeof value === "string" && /^[a-zA-Z0-9:_.-]{1,96}$/.test(value);
+var round2 = (value) => Math.round(value * 100) / 100;
+function benefitStats(player, now) {
+  const stats = derivedStats(player, now);
+  const relic = player.relicUntil > now ? player.relic : null;
+  return {
+    hp: player.hp,
+    maxHp: stats.maxHp,
+    basicDamage: stats.basicDamage,
+    skillDamage: stats.skillDamage * 100,
+    basicReduction: stats.basicReduction * 100,
+    skillReduction: stats.skillReduction * 100,
+    speed: stats.speed,
+    cooldown: (1 - stats.cooldown) * 100,
+    vision: VISION.hero * (relic === "scout" ? VISION.scoutRatio : 1),
+    structureDamage: relic === "raider" ? 15 : 0,
+    wardenShield: relic === "warden" ? 120 : 0,
+    relicSeconds: Math.max(0, (player.relicUntil || 0) - now)
+  };
+}
+function applyChoiceCommand(world, player, type, data) {
+  if (!CHOICE_TYPES.has(type) || !validKey(data.requestId) || !validKey(data.offerId)) return false;
+  const receipts = player.choiceReceipts || (player.choiceReceipts = []);
+  const previous = receipts.find((receipt2) => receipt2.requestId === data.requestId);
+  if (previous) return previous.status === "applied" && previous.type === type && previous.offerId === data.offerId && previous.id === (data.id || null);
+  const receipt = {
+    requestId: data.requestId,
+    offerId: data.offerId,
+    type,
+    id: typeof data.id === "string" ? data.id.slice(0, 40) : null,
+    status: "rejected",
+    reason: "STALE_OFFER",
+    benefits: {}
+  };
+  const current = type === "relic" ? player.relicOffer?.id : player.offerId;
+  const exists = type === "relic" ? player.relicOffer : player.offer;
+  const expiresAt = type === "relic" ? player.relicOffer?.expiresAt : player.offerExpiresAt;
+  if (world.phase !== "playing") receipt.reason = "NOT_PLAYING";
+  else if (exists && current === data.offerId && world.matchTime < expiresAt) {
+    const before = benefitStats(player, world.matchTime);
+    const applied = type === "upgrade" ? chooseUpgrade(world, player, data.id) : type === "relic" ? chooseRelic(world, player, data.id) : rerollUpgrade(world, player);
+    receipt.reason = applied ? null : "INVALID_CHOICE";
+    if (applied) {
+      receipt.status = "applied";
+      const after = benefitStats(player, world.matchTime);
+      for (const key of Object.keys(after)) {
+        if (round2(before[key]) !== round2(after[key])) receipt.benefits[key] = { before: round2(before[key]), after: round2(after[key]) };
+      }
+      if (type === "upgrade") receipt.rank = player.ranks[data.id];
+    }
+  }
+  receipts.push(receipt);
+  if (receipts.length > 16) receipts.shift();
+  return receipt.status === "applied";
 }
 
 // server/targeting.js
@@ -990,7 +1150,7 @@ function compareTargets(source, priority, a, b) {
   return (a.x - b.x) * sign || (a.y - b.y) * sign || String(a.id).localeCompare(String(b.id));
 }
 function chooseAttackTarget(world, source, options = {}) {
-  const { mode = "auto", range = 430, radius = 8, structures = true } = options;
+  const { mode = "auto", range = PLAYER.attackRange, radius = PLAYER.projectileRadius, structures = true } = options;
   const priority = targetPriority(options.priority);
   const heroes = Object.values(world.players);
   const farm = [...world.minions, ...world.camps];
@@ -1087,9 +1247,7 @@ function applyCommand(world, playerId, type, data = {}) {
   if (type === "select_hero") return selectHero(world, playerId, data.hero);
   if (type === "ready") return setReady(world, playerId, data.ready !== false);
   if (type === "start_match") return startMatch(world, playerId);
-  if (type === "upgrade") return chooseUpgrade(world, player, data.id);
-  if (type === "reroll") return rerollUpgrade(world, player);
-  if (type === "relic") return chooseRelic(world, player, data.id);
+  if (CHOICE_TYPES.has(type)) return applyChoiceCommand(world, player, type, data);
   return false;
 }
 function consumeSkillCast(player, index) {
@@ -1099,25 +1257,6 @@ function consumeSkillCast(player, index) {
   const context = player.input[`${key}Context`];
   player.input[`${key}Context`] = null;
   return value ? context || { auto: false, aimX: player.input.aimX, aimY: player.input.aimY } : null;
-}
-
-// server/effects.js
-function addEffect(world, kind, data = {}, ttl = 0.35) {
-  const effect = {
-    id: `fx${world.nextEntityId++}`,
-    kind,
-    expiresAt: world.matchTime + ttl,
-    ...data
-  };
-  world.effects.push(effect);
-  if (world.effects.length > 64) {
-    const removable = world.effects.findIndex((item) => item.kind !== "cinderZone" || item.expiresAt <= world.matchTime);
-    world.effects.splice(Math.max(0, removable), 1);
-  }
-  return effect;
-}
-function updateEffects(world) {
-  world.effects = world.effects.filter((effect) => effect.expiresAt > world.matchTime);
 }
 
 // server/combat.js
@@ -1158,13 +1297,14 @@ function damageStructure(world, target, amount, damageClass, sourceId, origin) {
   }
   return dealt;
 }
-function damagePlayer(world, target, amount, damageClass, sourceId) {
+function damagePlayer(world, target, amount, damageClass, sourceId, status, tempo) {
   if (target.spiritUntil > world.matchTime || target.protectUntil > world.matchTime) return 0;
-  let adjusted = amount;
-  if (damageClass === "basic") adjusted *= 1 - Math.min(0.08, (target.ranks.guard || 0) * 0.04);
-  else if (damageClass === "skill") adjusted *= 1 - Math.min(0.08, (target.ranks.ward || 0) * 0.04);
-  else if (damageClass === "minion") adjusted *= MINIONS.heroDamageRatio;
-  adjusted = Math.max(0.01, round(adjusted, 100));
+  const ratio = damageClass === "basic" ? 1 - Math.min(0.08, (target.ranks.guard || 0) * 0.04) : damageClass === "skill" ? 1 - Math.min(0.08, (target.ranks.ward || 0) * 0.04) : damageClass === "minion" ? MINIONS.heroDamageRatio : 1;
+  let adjusted = Math.max(0.01, round(amount * ratio, 100));
+  const source = world.players[sourceId];
+  const blocked = blockBossDamage(world, target, source, adjusted, damageClass, status);
+  if (tempo) emitBossProc(world, source, "tempo", target, tempoHpBonus(target, adjusted, round(tempo * ratio, 100), blocked));
+  adjusted -= blocked;
   const shieldSource = target.shieldSource;
   const absorbed = Math.min(target.shield, adjusted);
   if (shieldSource === "aegis" && absorbed > 0 && target.hero === "diamond") {
@@ -1175,21 +1315,20 @@ function damagePlayer(world, target, amount, damageClass, sourceId) {
   target.shield = Math.max(0, target.shield - absorbed);
   if (absorbed > 0 && target.shield <= 0) {
     target.shieldSource = null;
-    if (shieldSource === "crystal" || shieldSource === "aegis") target.crystalReadyAt = world.matchTime + 8;
+    if (shieldSource === "crystal" || shieldSource === "aegis") target.crystalReadyAt = world.matchTime + HEROES.diamond.passiveDetail.recovery;
     if (shieldSource === "warden") target.wardenReadyAt = world.matchTime + 8;
   }
   const dealt = adjusted - absorbed;
   target.hp = Math.max(0, target.hp - dealt);
-  const source = world.players[sourceId];
   if (source && source.team !== target.team) {
     target.lastHeroDamageAt = world.matchTime;
     target.lastHeroDamager = source.id;
-    target.crystalReadyAt = world.matchTime + 8;
+    target.crystalReadyAt = world.matchTime + HEROES.diamond.passiveDetail.recovery;
     source.towerAggroTeam = target.team;
     source.towerAggroUntil = world.matchTime + 2.5;
   }
   if (target.hp === 0) killPlayer(world, target, sourceId);
-  return dealt + absorbed;
+  return dealt + absorbed + blocked;
 }
 function minionDeathXp(world, target) {
   const config2 = MINIONS[target.minionType];
@@ -1209,14 +1348,8 @@ function campDeath(world, camp2) {
   if (!killer) return;
   killer.guardianKills += 1;
   killer.bossPowers += 1;
-  killer.bossPowerUntil = Math.max(killer.bossPowerUntil || 0, world.matchTime + CAMPS.powerSeconds);
+  grantBossPower(world, killer, camp2.campType);
   awardXp(world, killer, CAMPS[camp2.campType].xp);
-  addEffect(world, "bossPower", {
-    x: camp2.x,
-    y: camp2.y,
-    team: killer.team,
-    targetId: killer.id
-  }, 0.9);
   const progress = world.campProgress[camp2.side];
   if (progress.killerId !== killer.id) {
     progress.killerId = killer.id;
@@ -1284,13 +1417,29 @@ function applyDamage(world, target, amount, damageClass, sourceId, status = {}, 
   if (status.missingHpRatio && target.kind !== "tower" && target.kind !== "core") {
     amount += Math.min(status.missingHpCap, Math.max(0, target.maxHp - target.hp) * status.missingHpRatio);
   }
+  const tempo = consumeTempo(world, world.players[sourceId], target, damageClass, status);
+  if (tempo) {
+    amount += tempo;
+    status = {
+      ...status,
+      slow: Math.max(status.slow || 0, BOSS_POWERS.tempo.slow),
+      slowSeconds: Math.max(status.slowSeconds || 0, BOSS_POWERS.tempo.slowSeconds)
+    };
+  }
   const impact = { x: target.x, y: target.y };
   const deathsBefore = target.kind === "player" ? target.deaths : 0;
   let dealt = 0;
-  if (target.kind === "player") dealt = damagePlayer(world, target, amount, damageClass, sourceId);
+  if (target.kind === "player") dealt = damagePlayer(world, target, amount, damageClass, sourceId, status, tempo);
   else if (target.kind === "tower" || target.kind === "core") dealt = damageStructure(world, target, amount, damageClass, sourceId, origin);
   else {
     dealt = Math.max(0.01, round(amount, 100));
+    if (tempo) emitBossProc(
+      world,
+      world.players[sourceId],
+      "tempo",
+      target,
+      tempoHpBonus({ hp: target.hp, shield: 0 }, dealt, tempo)
+    );
     target.hp = Math.max(0, target.hp - dealt);
     if (target.hp === 0 && world.players[sourceId]) target.lastHitBy = sourceId;
     if (target.hp === 0) {
@@ -1808,7 +1957,7 @@ function fire(world, player, angle, damage, options = {}) {
     damage,
     damageClass: options.damageClass || "basic",
     projectileType: options.projectileType,
-    status: options.status,
+    status: { ...options.status, directHeroHit: true },
     pierces: options.pierces,
     targetId: options.targetId
   });
@@ -1841,14 +1990,15 @@ function basicAttack(world, intent) {
   player.protectUntil = 0;
   player.basicReadyAt = world.matchTime + PLAYER.attackCooldown;
   let damage = stats.basicDamage;
-  const status = { consumeMark: true };
+  const status = { consumeMark: true, tempoEligible: true };
   let projectileType = "basic";
   if (player.hero === "diamond") damage += consumeRiposte(player, world.matchTime);
   if (player.hero === "scarlett") {
-    player.thirdShot = (player.thirdShot + 1) % 3;
+    const passive = HEROES.scarlett.passiveDetail;
+    player.thirdShot = (player.thirdShot + 1) % passive.every;
     if (player.thirdShot === 0) {
-      damage += 10;
-      Object.assign(status, { burnDps: 3, burnSeconds: 2, burnClass: "basic" });
+      damage += passive.bonusDamage;
+      Object.assign(status, { burnDps: passive.burnDps, burnSeconds: passive.burnSeconds, burnClass: "basic" });
       projectileType = "flame";
     }
     if (player.cinderCharges > 0 && player.cinderUntil > world.matchTime) {
@@ -1927,7 +2077,7 @@ function cloneAfterDash(world, player, skill, aim, context) {
     hp: skill.cloneHp,
     maxHp: skill.cloneHp,
     expiresAt: world.matchTime + skill.cloneSeconds,
-    nextShotAt: world.matchTime + 0.2,
+    nextShotAt: world.matchTime + skill.cloneWindup,
     shotsLeft: skill.cloneShots,
     damage: skill.cloneDamage
   });
@@ -2037,12 +2187,13 @@ function castSkill(world, intent) {
   }, 0.45);
 }
 function updateClones(world) {
+  const config2 = HEROES.hina.skills[0];
   for (const clone of world.clones) {
     const owner = world.players[clone.ownerId];
     if (!owner || clone.hp <= 0 || clone.expiresAt <= world.matchTime || world.matchTime < clone.nextShotAt || clone.shotsLeft <= 0) continue;
-    const target = chooseAttackTarget(world, clone, { range: 340, radius: 7, structures: false });
+    const target = chooseAttackTarget(world, clone, { range: config2.cloneRange, radius: 7, structures: false });
     if (!target) continue;
-    clone.nextShotAt = world.matchTime + 0.75;
+    clone.nextShotAt = world.matchTime + config2.cloneInterval;
     clone.shotsLeft -= 1;
     const angle = Math.atan2(target.y - clone.y, target.x - clone.x);
     fire(
@@ -2050,7 +2201,7 @@ function updateClones(world) {
       { ...clone, id: owner.id },
       angle,
       clone.damage * derivedStats(owner, world.matchTime).skillDamage,
-      { speed: 650, range: 340, radius: 7, damageClass: "skill", projectileType: "clone", targetId: target.id }
+      { speed: 650, range: config2.cloneRange, radius: 7, damageClass: "skill", projectileType: "clone", targetId: target.id }
     );
   }
 }
@@ -2097,7 +2248,7 @@ function updateStatus(world, player, dt) {
     player.shield = 0;
     player.shieldSource = null;
     player.shieldUntil = 0;
-    player.crystalReadyAt = world.matchTime + 8;
+    player.crystalReadyAt = world.matchTime + HEROES.diamond.passiveDetail.recovery;
   }
   if (player.riposteUntil <= world.matchTime) player.riposteDamage = 0;
   if (player.cinderUntil <= world.matchTime) player.cinderCharges = 0;
@@ -2133,8 +2284,8 @@ function updateStatus(world, player, dt) {
     player.shield = 120;
     player.shieldSource = "warden";
   }
-  if (player.hero === "diamond" && player.shield <= 0 && world.matchTime >= player.crystalReadyAt && world.matchTime - player.lastHeroDamageAt >= 8) {
-    player.shield = 120;
+  if (player.hero === "diamond" && player.shield <= 0 && world.matchTime >= player.crystalReadyAt && world.matchTime - player.lastHeroDamageAt >= HEROES.diamond.passiveDetail.recovery) {
+    player.shield = HEROES.diamond.passiveDetail.shield;
     player.shieldSource = "crystal";
   }
 }
@@ -2279,14 +2430,20 @@ var config = {
   snapshotHz: MATCH.snapshotHz,
   aoi: false
 };
+function sendSnapshot(room, id) {
+  var _a;
+  const counters = (_a = room.state).snapshotSequences || (_a.snapshotSequences = /* @__PURE__ */ Object.create(null));
+  const sequence = counters[id] = (counters[id] || 0) + 1;
+  room.send(id, "duel_snapshot", { ...filterSnapshot(room.state.world, id), sequence });
+}
 function sendSnapshots(room) {
   for (const id of room.state.world.playerOrder) {
     const player = room.state.world.players[id];
-    if (player?.connected) room.send(id, "duel_snapshot", filterSnapshot(room.state.world, id));
+    if (player?.connected) sendSnapshot(room, id);
   }
 }
 function init(room) {
-  room.state = { entities: {}, world: createWorld(20260904) };
+  room.state = { entities: {}, world: createWorld(20260904), snapshotSequences: /* @__PURE__ */ Object.create(null) };
 }
 function onJoin(room, player) {
   const world = room.state.world;
@@ -2301,7 +2458,7 @@ function onJoin(room, player) {
     return;
   }
   if (player.hostId) establishHost(world, player.hostId, hostOptions);
-  room.send(player.id, "duel_snapshot", filterSnapshot(world, player.id));
+  sendSnapshot(room, player.id);
 }
 function onLeave(room, player) {
   removePlayer(room.state.world, player.id);
@@ -2311,6 +2468,7 @@ function onInput(room, player, input) {
   const type = typeof input.type === "string" ? input.type.slice(0, 40) : "input";
   const data = input.data && typeof input.data === "object" ? input.data : {};
   applyCommand(room.state.world, player.id, type, data);
+  if (CHOICE_TYPES.has(type)) sendSnapshot(room, player.id);
 }
 function tick(room, dt) {
   const world = room.state.world;

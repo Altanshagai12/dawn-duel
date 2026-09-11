@@ -1,4 +1,5 @@
-import { CAMPS, MAP, MATCH, MINIONS, PLAYER, STRUCTURES } from './config.js';
+import { BOSS_POWERS, CAMPS, MAP, MATCH, MINIONS, PLAYER, STRUCTURES } from './config.js';
+import { blockBossDamage, consumeTempo, emitBossProc, grantBossPower, tempoHpBonus } from './boss-powers.js';
 import { addEffect } from './effects.js';
 import { traceWalkableMove } from './geometry.js';
 import { clamp, distanceSquared, normalize, round } from './math.js';
@@ -54,13 +55,16 @@ function damageStructure(world, target, amount, damageClass, sourceId, origin) {
   return dealt;
 }
 
-function damagePlayer(world, target, amount, damageClass, sourceId) {
+function damagePlayer(world, target, amount, damageClass, sourceId, status, tempo) {
   if (target.spiritUntil > world.matchTime || target.protectUntil > world.matchTime) return 0;
-  let adjusted = amount;
-  if (damageClass === 'basic') adjusted *= 1 - Math.min(0.08, (target.ranks.guard || 0) * 0.04);
-  else if (damageClass === 'skill') adjusted *= 1 - Math.min(0.08, (target.ranks.ward || 0) * 0.04);
-  else if (damageClass === 'minion') adjusted *= MINIONS.heroDamageRatio;
-  adjusted = Math.max(0.01, round(adjusted, 100));
+  const ratio = damageClass === 'basic' ? 1 - Math.min(0.08, (target.ranks.guard || 0) * 0.04)
+    : damageClass === 'skill' ? 1 - Math.min(0.08, (target.ranks.ward || 0) * 0.04)
+    : damageClass === 'minion' ? MINIONS.heroDamageRatio : 1;
+  let adjusted = Math.max(0.01, round(amount * ratio, 100));
+  const source = world.players[sourceId];
+  const blocked = blockBossDamage(world, target, source, adjusted, damageClass, status);
+  if (tempo) emitBossProc(world, source, 'tempo', target, tempoHpBonus(target, adjusted, round(tempo * ratio, 100), blocked));
+  adjusted -= blocked;
   const shieldSource = target.shieldSource;
   const absorbed = Math.min(target.shield, adjusted);
   if (shieldSource === 'aegis' && absorbed > 0 && target.hero === 'diamond') {
@@ -71,21 +75,20 @@ function damagePlayer(world, target, amount, damageClass, sourceId) {
   target.shield = Math.max(0, target.shield - absorbed);
   if (absorbed > 0 && target.shield <= 0) {
     target.shieldSource = null;
-    if (shieldSource === 'crystal' || shieldSource === 'aegis') target.crystalReadyAt = world.matchTime + 8;
+    if (shieldSource === 'crystal' || shieldSource === 'aegis') target.crystalReadyAt = world.matchTime + HEROES.diamond.passiveDetail.recovery;
     if (shieldSource === 'warden') target.wardenReadyAt = world.matchTime + 8;
   }
   const dealt = adjusted - absorbed;
   target.hp = Math.max(0, target.hp - dealt);
-  const source = world.players[sourceId];
   if (source && source.team !== target.team) {
     target.lastHeroDamageAt = world.matchTime;
     target.lastHeroDamager = source.id;
-    target.crystalReadyAt = world.matchTime + 8;
+    target.crystalReadyAt = world.matchTime + HEROES.diamond.passiveDetail.recovery;
     source.towerAggroTeam = target.team;
     source.towerAggroUntil = world.matchTime + 2.5;
   }
   if (target.hp === 0) killPlayer(world, target, sourceId);
-  return dealt + absorbed;
+  return dealt + absorbed + blocked;
 }
 
 function minionDeathXp(world, target) {
@@ -107,14 +110,8 @@ function campDeath(world, camp) {
   if (!killer) return;
   killer.guardianKills += 1;
   killer.bossPowers += 1;
-  killer.bossPowerUntil = Math.max(killer.bossPowerUntil || 0, world.matchTime + CAMPS.powerSeconds);
+  grantBossPower(world, killer, camp.campType);
   awardXp(world, killer, CAMPS[camp.campType].xp);
-  addEffect(world, 'bossPower', {
-    x: camp.x,
-    y: camp.y,
-    team: killer.team,
-    targetId: killer.id,
-  }, 0.9);
   const progress = world.campProgress[camp.side];
   if (progress.killerId !== killer.id) {
     progress.killerId = killer.id;
@@ -183,13 +180,21 @@ export function applyDamage(world, target, amount, damageClass, sourceId, status
   if (status.missingHpRatio && target.kind !== 'tower' && target.kind !== 'core') {
     amount += Math.min(status.missingHpCap, Math.max(0, target.maxHp - target.hp) * status.missingHpRatio);
   }
+  const tempo = consumeTempo(world, world.players[sourceId], target, damageClass, status);
+  if (tempo) {
+    amount += tempo;
+    status = { ...status, slow: Math.max(status.slow || 0, BOSS_POWERS.tempo.slow),
+      slowSeconds: Math.max(status.slowSeconds || 0, BOSS_POWERS.tempo.slowSeconds) };
+  }
   const impact = { x: target.x, y: target.y };
   const deathsBefore = target.kind === 'player' ? target.deaths : 0;
   let dealt = 0;
-  if (target.kind === 'player') dealt = damagePlayer(world, target, amount, damageClass, sourceId);
+  if (target.kind === 'player') dealt = damagePlayer(world, target, amount, damageClass, sourceId, status, tempo);
   else if (target.kind === 'tower' || target.kind === 'core') dealt = damageStructure(world, target, amount, damageClass, sourceId, origin);
   else {
     dealt = Math.max(0.01, round(amount, 100));
+    if (tempo) emitBossProc(world, world.players[sourceId], 'tempo', target,
+      tempoHpBonus({ hp: target.hp, shield: 0 }, dealt, tempo));
     target.hp = Math.max(0, target.hp - dealt);
     if (target.hp === 0 && world.players[sourceId]) target.lastHitBy = sourceId;
     if (target.hp === 0) {

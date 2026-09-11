@@ -46,8 +46,11 @@ coordinates never enter the opponent's iframe.
 - Five minions per side every 24 seconds; late waves replace a melee unit with
   a siege unit.
 - Two neutral guardians on each half. Defeating both guardians from one half in
-  the same spawn cycle unlocks one temporary relic choice. Each boss kill also
-  grants a non-stacking 30-second, 3% damage/movement Boss Power reward.
+  the same spawn cycle unlocks one temporary relic choice. Each kill also grants
+  a distinct 30-second power: blue Aegis reduces new skill cooldowns by 4% and
+  blocks up to 35 direct hero damage every 8s; red Surge adds 18 basic-hit damage
+  every 3s and briefly slows enemy heroes. Neither stacks or resets its proc
+  timer on refresh; death removes both. Structures never take Surge damage.
 - Level 1–8 upgrade draft with equal seeded offers, strict stat caps, catch-up
   XP, repeat-kill decay, and no permanent gameplay progression.
 - At eight minutes Dawnfall starts: both outer defenses decay, while the side
@@ -59,8 +62,18 @@ coordinates never enter the opponent's iframe.
   units, projectiles, camp state, and combat effects are removed server-side.
 - Level and relic offers appear as compact upper-right item cards without
   pausing movement or combat; an unanswered offer auto-selects after 12 seconds.
+  Choices use a reliable action channel with offer-bound retries and private
+  receipts. Clicking shows pending immediately, then the actual before/after
+  benefit. Movement packets cannot replace a choice or double-spend it.
+- Functional skill labels, confirmed-cast callouts, visible status/boss glyphs,
+  and a non-pausing inspect panel explain current skill effects and live stats.
+  Blue/red power chips distinguish their duration from block/hit recovery.
 - Generated tower/core sprites, guardian-site decals, projectile art, animated
   shot trails, impact bursts, and camera feedback keep every hit readable.
+
+See [v8 research, decisions and verification](docs/combat-clarity-v8.md). These
+source changes require a coordinated client/server release; building locally
+does not publish them.
 
 ## Local development
 

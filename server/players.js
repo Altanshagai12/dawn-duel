@@ -4,6 +4,7 @@ import { clampToOwnHalf, isOwnHalf, resolveWalkableMove, spawnPoint } from './ge
 import { consumeSkillCast } from './inputs.js';
 import { clamp, distanceSquared, normalize, roundAround } from './math.js';
 import { blockedByStructure } from './player-movement.js';
+import { HEROES } from './heroes.js';
 import { derivedStats } from './progression.js';
 import { castSkill, prepareSkill, updateClones, updateZones } from './skills.js';
 
@@ -15,7 +16,7 @@ function updateStatus(world, player, dt) {
   if (player.slowUntil <= world.matchTime) player.slowRatio = 0;
   if (player.shieldSource === 'aegis' && player.shieldUntil <= world.matchTime) {
     player.shield = 0; player.shieldSource = null; player.shieldUntil = 0;
-    player.crystalReadyAt = world.matchTime + 8;
+    player.crystalReadyAt = world.matchTime + HEROES.diamond.passiveDetail.recovery;
   }
   if (player.riposteUntil <= world.matchTime) player.riposteDamage = 0;
   if (player.cinderUntil <= world.matchTime) player.cinderCharges = 0;
@@ -46,8 +47,8 @@ function updateStatus(world, player, dt) {
     player.shield = 120; player.shieldSource = 'warden';
   }
   if (player.hero === 'diamond' && player.shield <= 0 && world.matchTime >= player.crystalReadyAt
-    && world.matchTime - player.lastHeroDamageAt >= 8) {
-    player.shield = 120; player.shieldSource = 'crystal';
+    && world.matchTime - player.lastHeroDamageAt >= HEROES.diamond.passiveDetail.recovery) {
+    player.shield = HEROES.diamond.passiveDetail.shield; player.shieldSource = 'crystal';
   }
 }
 

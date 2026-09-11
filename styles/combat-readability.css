@@ -1,0 +1,17 @@
+.boss-power-status { display: flex; flex-direction: column; gap: 3px; padding: 0; border: 0; box-shadow: none; background: none; letter-spacing: 0; }
+.power-chip { pointer-events: auto; min-height: 26px; padding: 5px 8px; border: 1px solid currentColor; border-radius: 6px; font: 800 9px system-ui; white-space: nowrap; background: #031314ed; touch-action: manipulation; }
+.power-chip--aegis { color: #83dfff; }
+.power-chip--tempo { color: #ffab7c; }
+#combat-info { position: absolute; right: calc(100% + 3px); bottom: 0; min-width: 44px; min-height: 44px; padding: 0; border: 1px solid #8daead77; border-radius: 8px; color: #d9eee5; background: #06191be8; font-size: 20px; pointer-events: auto; touch-action: manipulation; }
+.combat-inspect { position: absolute; z-index: 32; left: 50%; top: max(65px, calc(var(--safe-top) + 60px)); transform: translateX(-50%); width: min(440px, 60cqw); max-height: calc(100cqh - 145px); overflow-y: auto; padding: 10px 13px; border: 1px solid #72aca4; border-radius: 9px; background: #031717f5; box-shadow: 0 8px 25px #0008; pointer-events: auto; touch-action: pan-y; }
+.combat-inspect header { display: flex; align-items: center; justify-content: space-between; position: sticky; top: -10px; background: #031717; }
+.combat-inspect h3 { margin: 0; font-size: 12px; color: #fff0b0; }
+#combat-info-close { min-width: 44px; min-height: 44px; padding: 0; border: 0; background: transparent; color: #deeee6; font-size: 21px; }
+.combat-inspect p { font-size: 11px; line-height: 1.45; margin: 6px 0; color: #cde3d8; }
+.combat-inspect .skill-detail { padding-top: 6px; border-top: 1px solid #6da19c44; color: #fff4d0; }
+#combat-powers { white-space: pre-line; }
+#combat-power-rule { color: #a4b9b2; font-size: 10px; }
+@container game (max-height: 360px) {
+  .combat-inspect { top: 55px; max-height: calc(100cqh - 120px); width: min(440px, 64cqw); }
+  .power-chip { padding: 3px 5px; font-size: 8px; min-height: 22px; }
+}

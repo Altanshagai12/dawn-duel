@@ -1,3 +1,5 @@
+import { rememberEffect } from './recentEffects.js';
+
 export class Feedback {
   constructor() {
     this.context = null;
@@ -34,14 +36,18 @@ export class Feedback {
     if (this.lastHp !== null && player?.hp < this.lastHp) navigator.vibrate?.(18);
     this.lastHp = player?.hp ?? this.lastHp;
     for (const effect of snapshot.effects || []) {
-      if (this.seen.has(effect.id)) continue;
-      this.seen.add(effect.id);
+      if (!rememberEffect(this.seen, effect.id)) continue;
+      if (effect.kind === 'skillCast' && effect.ownerId === snapshot.you) {
+        const frequencies = { precision: 660, volley: 380, aegis: 520, repulse: 220,
+          emberLine: 150, cinderFocus: 330, shadowStep: 780, moonSnare: 440 };
+        this.tone(frequencies[effect.skillId] || 440, .13, .028, 'triangle');
+      }
+      if (effect.kind === 'bossPower' && effect.ownerId === snapshot.you) this.tone(effect.power === 'aegis' ? 740 : 360, .3, .035, 'sine');
       if (effect.kind === 'muzzle' && effect.team === snapshot.team) this.tone(180, .04, .018, 'square');
       if (effect.kind === 'impact') this.tone(90, .05, .02, 'triangle');
       if (effect.kind === 'campWarn') this.tone(260, .12, .018, 'sine');
       if (effect.kind === 'defeat') { this.tone(72, .35, .045, 'sawtooth'); navigator.vibrate?.([40, 40, 80]); }
       if (effect.kind === 'wave') this.tone(420, .18, .02, 'sine');
     }
-    if (this.seen.size > 500) this.seen.clear();
   }
 }

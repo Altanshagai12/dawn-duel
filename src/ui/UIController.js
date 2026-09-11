@@ -5,6 +5,8 @@ import { ChoiceView } from './ChoiceView.js';
 import { drawMinimap } from './Minimap.js';
 import { AnnouncementState, phaseVisibility, teamHud } from './presentation.js';
 import { setClass, setStyle, setText } from './hudDom.js';
+import { skillVerb } from './combat-copy.js';
+import { CombatReadability } from './CombatReadability.js';
 
 const $ = selector => document.querySelector(selector);
 const clamp01 = value => Math.max(0, Math.min(1, Number(value) || 0));
@@ -23,10 +25,11 @@ export class UIController {
     this.callbacks = {};
     this.choices = new ChoiceView((type, data) => this.callbacks.command?.(type, data));
     this.announcements = new AnnouncementState();
+    this.combatReadability = new CombatReadability();
     $('#language').addEventListener('click', () => this.setLanguage(this.language === 'mn' ? 'en' : 'mn'));
     $('#draft-retry').addEventListener('click', () => this.callbacks.retry?.());
     $('#draft-action').addEventListener('click', () => this.handleLobbyAction());
-    $('#reroll').addEventListener('click', () => this.callbacks.command?.('reroll'));
+    $('#reroll').addEventListener('click', () => this.choices.reroll());
     $('#practice-again').addEventListener('click', () => this.callbacks.finish?.(this.mode));
     this.renderHeroes();
     this.applyLanguage();
@@ -103,8 +106,8 @@ export class UIController {
     });
     this.updateDraft(this.lastDraft);
     const names = this.t().skills[hero];
-    $('#skill-1-name').textContent = names[0];
-    $('#skill-2-name').textContent = names[1];
+    $('#skill-1-name').textContent = skillVerb(HEROES[hero].skills[0].id, this.language);
+    $('#skill-2-name').textContent = skillVerb(HEROES[hero].skills[1].id, this.language);
     $('#hero-kit').textContent = this.t().skillDetails[hero].join('  •  ');
     this.t().skillDetails[hero].forEach((detail, index) => {
       const button = $(`#skill-${index + 1}`);
@@ -119,6 +122,7 @@ export class UIController {
   setPhase(phase) {
     if (this.currentPhase === phase) return;
     this.currentPhase = phase;
+    if (phase !== 'playing') this.combatReadability.reset();
     const visible = phaseVisibility(phase);
     $('#hero-screen').classList.toggle('screen--active', visible.draft);
     $('#hud').classList.toggle('is-hidden', !visible.battle);
@@ -128,6 +132,8 @@ export class UIController {
   }
 
   resetSession() {
+    this.choices.reset();
+    this.combatReadability.reset();
     this.lastDraft = null;
     this.announcements.reset();
     this.setPhase('select');
@@ -220,10 +226,7 @@ export class UIController {
     setStyle($('#shield-bar'), 'width', pct((you.shield || 0) / you.maxHp));
     setStyle($('#shield-bar'), 'left', '0px');
     setStyle($('#xp-bar'), 'width', pct(xpProgress(you).ratio));
-    const bossPowerRemaining = Math.max(0, Math.ceil((you.bossPowerUntil || 0) - snapshot.now));
-    const bossPowerStatus = $('#boss-power-status');
-    setText(bossPowerStatus, `${this.t().bossPower} · ${bossPowerRemaining}s`);
-    setClass(bossPowerStatus, 'is-hidden', bossPowerRemaining <= 0);
+    this.combatReadability.update(you, snapshot.now, this.language, this.t());
     this.choices.update(you, snapshot.now, this.t(), this.language);
     this.updateCooldowns(you, snapshot.now);
     drawMinimap($('#minimap'), snapshot);
@@ -250,7 +253,7 @@ export class UIController {
   }
 
   updateAnnouncement(snapshot, player) {
-    const text = this.announcements.update(snapshot, player, this.t());
+    const text = this.announcements.update(snapshot, player, this.t(), this.language);
     const node = $('#announcement');
     setText(node, text);
     setClass(node, 'on', Boolean(text));

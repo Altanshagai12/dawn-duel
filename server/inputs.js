@@ -1,4 +1,4 @@
-import { chooseRelic, chooseUpgrade, rerollUpgrade } from './progression.js';
+import { applyChoiceCommand, CHOICE_TYPES } from './choice-commands.js';
 import { isHeroId } from './heroes.js';
 import { normalize } from './math.js';
 import { attackMode, targetPriority } from './targeting.js';
@@ -82,9 +82,7 @@ export function applyCommand(world, playerId, type, data = {}) {
   if (type === 'select_hero') return selectHero(world, playerId, data.hero);
   if (type === 'ready') return setReady(world, playerId, data.ready !== false);
   if (type === 'start_match') return startMatch(world, playerId);
-  if (type === 'upgrade') return chooseUpgrade(world, player, data.id);
-  if (type === 'reroll') return rerollUpgrade(world, player);
-  if (type === 'relic') return chooseRelic(world, player, data.id);
+  if (CHOICE_TYPES.has(type)) return applyChoiceCommand(world, player, type, data);
   return false;
 }
 

@@ -48,8 +48,8 @@ test('client prediction uses the same live structure collision circles as the se
 });
 
 test('client prediction mirrors boss power, Swift, slow, and wounded movement modifiers', () => {
-  const player = { ranks: { swift: 2 }, bossPowerUntil: 40, slowUntil: 30, slowRatio: .2, spiritUntil: 0 };
-  const boostedAndSlowed = PLAYER.speed * (1 + .06 + .03) * .8;
+  const player = { ranks: { swift: 2 }, bossAegisUntil: 40, bossTempoUntil: 40, slowUntil: 30, slowRatio: .2, spiritUntil: 0 };
+  const boostedAndSlowed = PLAYER.speed * (1 + .06) * .8;
   assert.ok(Math.abs(predictionSpeed(player, 20) - boostedAndSlowed) < 0.001);
   player.spiritUntil = 25;
   assert.ok(Math.abs(predictionSpeed(player, 20) - boostedAndSlowed * PLAYER.woundedSpeedRatio) < 0.001);
@@ -82,7 +82,7 @@ test('the client contains no standalone buff shrine renderer or HUD copy', () =>
 
 test('production loads one versioned client bundle so stale modules cannot mix', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  assert.match(html, /<script type="module" src="\.\/app\.v7\.js"><\/script>/);
+  assert.match(html, /<script type="module" src="\.\/app\.v8\.js"><\/script>/);
   assert.doesNotMatch(html, /src="\.\/src\/main\.js"/);
 });
 

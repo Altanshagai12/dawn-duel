@@ -1,5 +1,7 @@
 import { CAMPS, MAP, MATCH, PLAYER, STRUCTURES } from './config.js';
 import { spawnPoint, teamDirection } from './geometry.js';
+import { clearBossPowers } from './boss-powers.js';
+import { HEROES } from './heroes.js';
 
 function structure(id, team, kind, x, y) {
   const config = STRUCTURES[kind];
@@ -118,20 +120,26 @@ export function addPlayer(world, id, name = 'Player') {
     attackTargetId: null,
     attackAt: -999,
     lastAttackMode: 'manual',
-    crystalReadyAt: 8,
+    crystalReadyAt: HEROES.diamond.passiveDetail.recovery,
     towerAggroTeam: null,
     towerAggroUntil: 0,
     ranks: {},
     offer: null,
+    offerId: null,
+    choiceReceipts: [],
     offerNumber: 0,
     offerRerolled: false,
     offerExpiresAt: 0,
     queuedOffers: 0,
     rerollLevel: 0,
     relicOffer: null,
+    relicOfferNumber: 0,
     relic: null,
     relicUntil: 0,
-    bossPowerUntil: 0,
+    bossAegisUntil: 0,
+    bossTempoUntil: 0,
+    bossAegisReadyAt: 0,
+    bossTempoReadyAt: 0,
     wardenReadyAt: 0,
     input: { seq: -1, moveX: 0, moveY: 0, aimX: facing.x, aimY: facing.y, attack: false, attackMode: 'manual',
       skill1: false, skill2: false, queuedSkill1: false, queuedSkill2: false },
@@ -193,7 +201,7 @@ export function resetPlayerAtFountain(player) {
   player.towerAggroTeam = null;
   player.towerAggroUntil = 0;
   player.displaceImmuneUntil = 0;
-  player.bossPowerUntil = 0;
+  clearBossPowers(player);
   player.input.moveX = 0;
   player.input.moveY = 0;
   player.input.attack = false;

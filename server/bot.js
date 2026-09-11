@@ -100,8 +100,8 @@ export function updateBot(world, botId, memory = {}) {
   const bot = world.players[botId];
   if (!bot) return memory;
   memory.seq = (memory.seq || 0) + 1;
-  if (bot.offer) applyCommand(world, bot.id, 'upgrade', { id: bot.offer[0] });
-  if (bot.relicOffer) applyCommand(world, bot.id, 'relic', { id: bot.relicOffer.ids[0] });
+  if (bot.offer) applyCommand(world, bot.id, 'upgrade', { id: bot.offer[0], offerId: bot.offerId, requestId: `bot:${bot.offerId}` });
+  if (bot.relicOffer) applyCommand(world, bot.id, 'relic', { id: bot.relicOffer.ids[0], offerId: bot.relicOffer.id, requestId: `bot:${bot.relicOffer.id}` });
   const home = spawnPoint(bot.team);
   if (bot.hp < bot.maxHp * 0.3) memory.retreating = true;
   if (memory.retreating && bot.hp >= bot.maxHp * 0.78) memory.retreating = false;

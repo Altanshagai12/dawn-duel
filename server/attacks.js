@@ -10,7 +10,7 @@ export function fire(world, player, angle, damage, options = {}) {
     dx: Math.cos(angle), dy: Math.sin(angle), radius: options.radius || PLAYER.projectileRadius,
     speed: options.speed || PLAYER.projectileSpeed, range: options.range || PLAYER.attackRange,
     damage, damageClass: options.damageClass || 'basic', projectileType: options.projectileType,
-    status: options.status, pierces: options.pierces, targetId: options.targetId,
+    status: { ...options.status, directHeroHit: true }, pierces: options.pierces, targetId: options.targetId,
   });
 }
 
@@ -39,14 +39,15 @@ export function basicAttack(world, intent) {
   player.protectUntil = 0;
   player.basicReadyAt = world.matchTime + PLAYER.attackCooldown;
   let damage = stats.basicDamage;
-  const status = { consumeMark: true };
+  const status = { consumeMark: true, tempoEligible: true };
   let projectileType = 'basic';
   if (player.hero === 'diamond') damage += consumeRiposte(player, world.matchTime);
   if (player.hero === 'scarlett') {
-    player.thirdShot = (player.thirdShot + 1) % 3;
+    const passive = HEROES.scarlett.passiveDetail;
+    player.thirdShot = (player.thirdShot + 1) % passive.every;
     if (player.thirdShot === 0) {
-      damage += 10;
-      Object.assign(status, { burnDps: 3, burnSeconds: 2, burnClass: 'basic' });
+      damage += passive.bonusDamage;
+      Object.assign(status, { burnDps: passive.burnDps, burnSeconds: passive.burnSeconds, burnClass: 'basic' });
       projectileType = 'flame';
     }
     if (player.cinderCharges > 0 && player.cinderUntil > world.matchTime) {

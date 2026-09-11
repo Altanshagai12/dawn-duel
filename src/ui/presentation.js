@@ -16,20 +16,23 @@ export function teamHud(snapshot) {
 }
 
 export class AnnouncementState {
-  reset() { this.wave = 0; this.dawnfall = false; this.powerUntil = 0; this.until = 0; this.text = ''; }
+  reset() { this.wave = 0; this.dawnfall = false; this.powers = [0, 0]; this.until = 0; this.text = ''; }
   constructor() { this.reset(); }
-  update(snapshot, player, labels) {
+  update(snapshot, player, labels, language = 'mn') {
     if (snapshot.match.paused) return labels.paused;
     if (snapshot.match.phase === 'countdown') return `${labels.countdown} ${Math.ceil(snapshot.match.countdown)}`;
     if (player.spiritUntil > snapshot.now) return `${labels.spirit} ${Math.ceil(player.spiritUntil - snapshot.now)}`;
     let message = '';
-    if ((player.bossPowerUntil || 0) > snapshot.now && player.bossPowerUntil > this.powerUntil) message = `${labels.bossPower} · 30s`;
+    const untils = [player.bossAegisUntil || 0, player.bossTempoUntil || 0];
+    const gained = untils.findIndex((until, index) => until > snapshot.now && until > this.powers[index]);
+    if (gained >= 0) message = `${bossName(gained ? 'tempo' : 'aegis', language)} · ${Math.ceil(untils[gained] - snapshot.now)}s`;
     else if (snapshot.match.dawnfall && !this.dawnfall) message = labels.dawnfall;
     else if (snapshot.match.wave > this.wave) message = `${labels.wave} ${snapshot.match.wave}`;
     this.wave = snapshot.match.wave;
     this.dawnfall = snapshot.match.dawnfall;
-    this.powerUntil = Math.max(this.powerUntil, player.bossPowerUntil || 0);
+    this.powers = untils;
     if (message) { this.text = message; this.until = snapshot.now + 1.4; }
     return snapshot.now < this.until ? this.text : '';
   }
 }
+import { bossName } from './boss-copy.js';

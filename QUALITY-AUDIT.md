@@ -154,3 +154,34 @@ unbounded stat growth. Five minions spawn per side every24s; relics last45s.
   and feedback acknowledgement. Browser play checked both 844x390 landscape and
   rotated 390x700 portrait frames with hold/release feedback. A local-only control
   fixture is excluded from the release. This is not a physical-device FPS benchmark.
+
+## Combat clarity and acknowledged motion v8 — 2026-09-10
+
+- Root cause: the SDK's latest-only realtime slot could overwrite a one-off
+  upgrade with the next held movement input. Choices now use offer-bound reliable
+  actions, retries and private authoritative receipts. Immediate pending feedback
+  is distinct from confirmed before/after stat changes. Replays cannot consume a
+  later queued offer; numbered snapshots cannot rewind UI, offers or input history.
+- Skills have functional mobile labels, actual cast/status feedback, matching
+  previews and a non-pausing inspection panel with current upgraded stats. Effect
+  deduplication evicts oldest IDs without replaying live visuals or sounds.
+- The existing blue/red guardians grant two bounded 30-second powers with distinct
+  rings, glyphs, duration and proc recovery indicators. Public effects are visible
+  to rivals only within vision; private cooldowns and offers remain private.
+- Equal 1500 starting HP, capped growth and structure threat-ring rules remain.
+  32 seeded complete games, mirrored-side checks and 24 retaliation combinations
+  pass. The tested maximum two-power combo is 494.25 HP, below the 550 HP gate.
+- Acknowledged movement replay lowers synthetic p95 position error from 25.51 to
+  13.03 world units. Adaptive remote buffering reduces maximum catch-up from
+  103.16 to 20.83ms, at a measured 36.67ms extra p95 presentation delay under
+  adverse jitter. This does not reduce actual network ping.
+- Full check passes 255 tests, 29 assets, SDK contracts, client/server builds and
+  signed-token direct multiplayer smoke. Two fresh browser clients exercised
+  Ready → host Start → live shield/dash casts. Compact 667×320 upgrade-click QA
+  and 390×844 game-owned landscape QA passed without pausing combat.
+- Independent reviewers found no remaining actionable P0/P1/P2 in the reviewed
+  scope. Physical-device and human competitive playtesting are still required.
+  No Usion code, native release, registry change or automatic deployment is included.
+
+Research, exact boss rules, test methodology, tradeoffs and coordinated-release
+requirements: [Combat clarity v8](docs/combat-clarity-v8.md).

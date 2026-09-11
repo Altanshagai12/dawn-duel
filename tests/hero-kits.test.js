@@ -3,7 +3,7 @@ import test from 'node:test';
 import { applyDamage, updateBurns } from '../server/combat.js';
 import { updateCamps } from '../server/camps.js';
 import { addEffect } from '../server/effects.js';
-import { MAP, PLAYER, UPGRADES } from '../server/config.js';
+import { BOSS_POWERS, MAP, PLAYER, UPGRADES } from '../server/config.js';
 import { filterSnapshot } from '../server/fog.js';
 import { isBattlefieldWalkable, lanePoint, traceWalkableMove } from '../server/geometry.js';
 import { HEROES } from '../server/heroes.js';
@@ -129,7 +129,7 @@ test('actual max-upgrade two-skill combinations stay below550 HP including empow
   for (const hero of Object.keys(HEROES)) {
     const { world, blue, red } = arena(hero, 80);
     blue.ranks = Object.fromEntries(Object.entries(UPGRADES).map(([id, upgrade]) => [id, upgrade.maxRank]));
-    blue.bossPowerUntil = 99;
+    blue.bossAegisUntil = 99; blue.bossTempoUntil = 99;
     cast(world, blue, 0);
     if (hero === 'diamond') applyDamage(world, blue, 160, 'skill', red.id);
     cast(world, blue, 1);
@@ -150,14 +150,14 @@ test('max-upgrade single-cast damage and control budgets stay below one-quarter 
   for (const hero of Object.values(HEROES)) {
     const { blue } = arena(hero.id);
     blue.ranks = Object.fromEntries(Object.entries(UPGRADES).map(([id, upgrade]) => [id, upgrade.maxRank]));
-    blue.bossPowerUntil = 99;
+    blue.bossAegisUntil = 99; blue.bossTempoUntil = 99;
     const stats = derivedStats(blue, 1);
     for (const skill of hero.skills) {
       const damage = ((skill.damage || 0) * (skill.count || skill.pulses || 1)
         + (skill.markDamage || 0) + (skill.missingHpCap || 0) + (skill.cloneDamage || 0) * (skill.cloneShots || 0)) * stats.skillDamage;
       assert.ok(damage <= 1500 * .25, `${skill.id} has excessive max-cast damage ${damage}`);
       assert.ok((skill.slow || 0) <= .25); assert.ok((skill.slowSeconds || 0) <= 1);
-      assert.ok(skill.cooldown * stats.cooldown >= 7.36);
+      assert.ok(skill.cooldown * stats.cooldown >= 8 * (1 - BOSS_POWERS.aegis.totalCooldownCap));
     }
   }
 });

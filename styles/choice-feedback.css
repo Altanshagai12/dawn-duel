@@ -1,0 +1,12 @@
+.choice-feedback { position: absolute; z-index: 26; top: 72px; left: 50%; transform: translateX(-50%); width: min(320px, 48cqw); margin: 0; padding: 7px 9px; border: 1px solid #65d9b99c; border-radius: 6px; background: #09251fee; color: #dcfff0; font-size: 10px; line-height: 1.4; white-space: pre-line; pointer-events: none; }
+.choice-feedback[data-state="pending"] { color: #ffe3a3; border-color: #e5bd72aa; }
+.choice-feedback[data-state="error"] { color: #ffbec0; border-color: #e77b7daa; }
+.choice-tray button.option.is-pending { border-color: #ffe3a3; background: #4a4223; opacity: 1; }
+.choice-tray button.option:disabled:not(.is-pending) { opacity: .5; }
+@container game (max-height: 520px) {
+  .choice-stack { top: max(52px, calc(var(--safe-top) + 48px)); max-height: min(110px, calc(100cqh - 240px)); min-height: 0; }
+  .choice-tray { padding: 5px; }
+  .choice-tray > p { font-size: 7px; line-height: 9px; margin-bottom: 3px; }
+  .choice-tray button.option { min-height: 44px; padding: 4px; }
+  .choice-feedback { top: max(54px, calc(var(--safe-top) + 50px)); left: auto; right: calc(min(330px, 39cqw) + 16px); transform: none; width: clamp(160px, calc(100cqw - 450px), 300px); font-size: 9px; }
+}

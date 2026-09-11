@@ -8,15 +8,18 @@ test('Shana rerolls each queued upgrade once without extending the choice timer'
   awardXp(world, blue, 1000);
   assert.equal(blue.level, 4);
   assert.equal(blue.queuedOffers, 2);
+  assert.equal(blue.offerId, 'u:1:0');
   const expiry = blue.offerExpiresAt;
   const original = [...blue.offer];
   world.matchTime += 3;
   assert.equal(rerollUpgrade(world, blue), true);
+  assert.equal(blue.offerId, 'u:1:1');
   assert.ok(blue.offer.every(id => !original.includes(id)));
   assert.equal(blue.offerExpiresAt, expiry);
   assert.equal(rerollUpgrade(world, blue), false);
   chooseUpgrade(world, blue, blue.offer[0]);
   assert.equal(blue.offerNumber, 2);
+  assert.equal(blue.offerId, 'u:2:0');
   assert.equal(blue.offerRerolled, false);
   assert.equal(rerollUpgrade(world, blue), true);
   chooseUpgrade(world, blue, blue.offer[0]);
@@ -24,6 +27,7 @@ test('Shana rerolls each queued upgrade once without extending the choice timer'
   world.matchTime = blue.offerExpiresAt;
   updateOffers(world);
   assert.equal(blue.offer, null);
+  assert.equal(blue.offerId, null);
   assert.equal(blue.queuedOffers, 0);
   assert.equal(Object.values(blue.ranks).reduce((sum, rank) => sum + rank, 0), 3);
 });

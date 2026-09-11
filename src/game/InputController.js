@@ -1,4 +1,5 @@
 import { gameVectorFromClient } from '../ui/orientation.js';
+import { INPUT_TIMELINE, InputTimeline } from './inputTimeline.js';
 
 const clamp = value => Math.max(-1, Math.min(1, value));
 const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight', 'Space', 'KeyQ', 'KeyE']);
@@ -36,13 +37,15 @@ function bindStick(root, enabled, onMove, onRelease, onEdge) {
 }
 
 export class InputController {
-  constructor(send) {
+  constructor(send, clock) {
     this.send = send;
     this.state = {
       moveX: 0, moveY: 0, aimX: 1, aimY: 0, attack: false, attackMode: 'auto',
       targetPriority: 'nearest', attackPress: 0, attackPressMode: 'auto',
       skill1: false, skill2: false, skill1Press: 0, skill2Press: 0, skill1Auto: true, skill2Auto: true,
     };
+    this.timeline = new InputTimeline(clock);
+    Object.defineProperty(this.state, INPUT_TIMELINE, { value: this.timeline });
     this.attackSources = new Map();
     this.keys = new Set(); this.seq = 0; this.enabled = false; this.preview = null;
     this.releaseMove = bindStick(document.querySelector('#move-stick'), () => this.enabled, (x, y) => {
@@ -194,11 +197,13 @@ export class InputController {
 
   reconcile(player) {
     for (const key of ['attackPress', 'skill1Press', 'skill2Press']) this.state[key] = Math.max(this.state[key], player?.[key] || 0);
+    if (Number.isSafeInteger(player?.inputSeq)) this.timeline.acknowledge(player.inputSeq);
   }
 
   resetSession() {
     this.reset(); this.state.attackPress = 0; this.state.skill1Press = 0; this.state.skill2Press = 0;
     this.state.attackMode = 'auto'; this.state.attackPressMode = 'auto';
+    this.seq = 0; this.timeline.reset();
   }
 
   reset() {
@@ -209,6 +214,9 @@ export class InputController {
 
   flush() {
     if (!this.enabled) return;
-    this.seq += 1; this.send({ seq: this.seq, ...this.state });
+    this.seq += 1;
+    const packet = { seq: this.seq, ...this.state };
+    this.timeline.record(packet);
+    this.send(packet);
   }
 }

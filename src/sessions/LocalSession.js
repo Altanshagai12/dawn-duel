@@ -3,6 +3,7 @@ import { filterSnapshot } from '../../server/fog.js';
 import { applyCommand } from '../../server/inputs.js';
 import { stepWorld } from '../../server/sim.js';
 import { addPlayer, createWorld } from '../../server/world.js';
+import { isChoice } from './ChoiceTransport.js';
 
 export class LocalSession {
   constructor(playerName = 'You') {
@@ -41,11 +42,18 @@ export class LocalSession {
 
   emit() {
     const snapshot = filterSnapshot(this.world, 'local');
+    snapshot.sequence = this.snapshotSequence = (this.snapshotSequence || 0) + 1;
     for (const listener of this.listeners) listener(snapshot);
   }
 
   command(type, data = {}) {
     const applied = applyCommand(this.world, 'local', type, data);
+    if (isChoice(type)) {
+      this.emit();
+      const receipt = this.world.players.local.choiceReceipts?.find(item => item.requestId === data.requestId);
+      return applied && receipt ? Promise.resolve(receipt)
+        : Promise.reject(Object.assign(new Error(receipt?.reason || 'INVALID_CHOICE'), { code: receipt?.reason || 'INVALID_CHOICE' }));
+    }
     if (type === 'select_hero' && applied) {
       this.world.players.bot.ready = true;
       applyCommand(this.world, 'local', 'start_match');

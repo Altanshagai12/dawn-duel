@@ -5,6 +5,7 @@ import { createAccessVerifier } from './direct-auth.js';
 import { allowMessage, MAX_FRAME_BYTES, MAX_INPUT_BYTES, parseFrame, payloadSize, rejectSocket, sendFrame } from './direct-wire.js';
 import { ResultOutbox } from './result-outbox.js';
 import { createResultPayload } from './result-submit.js';
+import { adaptLegacyChoice } from './legacy-choice.js';
 
 const EMPTY_ROOM_TTL_MS = 120_000;
 export const FINISHED_ROOM_TTL_MS = 30_000;
@@ -24,6 +25,7 @@ export function createDirectRuntime(options) {
   const rooms = new Map();
   const identityRates = new Map();
   const authenticated = new Map();
+  let nextConnectionEpoch = 0;
   const outbox = new ResultOutbox(options);
   const http = createServer((request, response) => {
     if (request.url === '/health' || request.url === '/health/') {
@@ -184,7 +186,7 @@ export function createDirectRuntime(options) {
     if (!frame) { rejectSocket(session.socket, 'INVALID_FRAME', 'Malformed message', 4002); return; }
     session.lastSeen = Date.now();
     session.socket._dawnLastSeen = session.lastSeen;
-    if (!allowMessage(session.rate, frame.type, session.lastSeen)) {
+    if (!allowMessage(session.rate, frame.type === 'action' ? 'input' : frame.type, session.lastSeen)) {
       rejectSocket(session.socket, 'RATE_LIMITED', 'Message rate exceeded', 4008);
       return;
     }
@@ -201,7 +203,7 @@ export function createDirectRuntime(options) {
       sendFrame(session.socket, 'pong', { t: frame.payload.t, server_t: Date.now(), seq: frame.seq });
       return;
     }
-    if (frame.type !== 'input') return;
+    if (frame.type !== 'input' && frame.type !== 'action') return;
     if (payloadSize(frame.payload) > MAX_INPUT_BYTES) {
       rejectSocket(session.socket, 'PAYLOAD_TOO_LARGE', 'Input payload exceeds 8 KiB', 4009);
       return;
@@ -210,9 +212,12 @@ export function createDirectRuntime(options) {
     if (!room || room.ended) return;
     if (room.members.get(session.identity.id)?.socket !== session.socket) return;
     const type = typeof frame.payload.action_type === 'string' ? frame.payload.action_type : 'input';
-    const data = frame.payload.action_data && typeof frame.payload.action_data === 'object'
+    const rawData = frame.payload.action_data && typeof frame.payload.action_data === 'object'
       ? frame.payload.action_data : {};
-    onInput(room.facade, { id: session.identity.id }, { type, data, channel: 'input' });
+    const data = adaptLegacyChoice(room.state.world, session.identity.id, type, rawData, {
+      channel: frame.type, connectionEpoch: session.connectionEpoch, sequence: frame.seq,
+    });
+    onInput(room.facade, { id: session.identity.id }, { type, data, channel: frame.type });
   }
 
   function attach(socket, request) {
@@ -242,6 +247,7 @@ export function createDirectRuntime(options) {
     void verifyAccess(token).then(identity => {
       if (socket.readyState !== 1) return;
       session.identity = identity;
+      session.connectionEpoch = ++nextConnectionEpoch;
       session.authKey = `${identity.roomId}:${identity.id}`;
       const previous = authenticated.get(session.authKey);
       if (previous?.socket && previous.socket !== socket) {

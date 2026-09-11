@@ -3,6 +3,7 @@ import { filterSnapshot } from './fog.js';
 import { applyCommand } from './inputs.js';
 import { reconnectPlayer, stepWorld } from './sim.js';
 import { addPlayer, createWorld, establishHost, removePlayer } from './world.js';
+import { CHOICE_TYPES } from './choice-commands.js';
 
 export const config = {
   profile: 'realtime',
@@ -12,15 +13,21 @@ export const config = {
   aoi: false,
 };
 
+function sendSnapshot(room, id) {
+  const counters = room.state.snapshotSequences ||= Object.create(null);
+  const sequence = counters[id] = (counters[id] || 0) + 1;
+  room.send(id, 'duel_snapshot', { ...filterSnapshot(room.state.world, id), sequence });
+}
+
 function sendSnapshots(room) {
   for (const id of room.state.world.playerOrder) {
     const player = room.state.world.players[id];
-    if (player?.connected) room.send(id, 'duel_snapshot', filterSnapshot(room.state.world, id));
+    if (player?.connected) sendSnapshot(room, id);
   }
 }
 
 export function init(room) {
-  room.state = { entities: {}, world: createWorld(20260904) };
+  room.state = { entities: {}, world: createWorld(20260904), snapshotSequences: Object.create(null) };
 }
 
 export function onJoin(room, player) {
@@ -36,7 +43,7 @@ export function onJoin(room, player) {
     return;
   }
   if (player.hostId) establishHost(world, player.hostId, hostOptions);
-  room.send(player.id, 'duel_snapshot', filterSnapshot(world, player.id));
+  sendSnapshot(room, player.id);
 }
 
 export function onLeave(room, player) {
@@ -48,6 +55,7 @@ export function onInput(room, player, input) {
   const type = typeof input.type === 'string' ? input.type.slice(0, 40) : 'input';
   const data = input.data && typeof input.data === 'object' ? input.data : {};
   applyCommand(room.state.world, player.id, type, data);
+  if (CHOICE_TYPES.has(type)) sendSnapshot(room, player.id);
 }
 
 export function tick(room, dt) {

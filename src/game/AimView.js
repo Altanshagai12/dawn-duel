@@ -1,9 +1,10 @@
 import { HEROES } from '../../server/heroes.js';
 import { PLAYER } from '../../server/config.js';
 import { traceWalkableMove } from '../../server/geometry.js';
+import { structureBlocks } from './motion.js';
 
 export class AimView {
-  constructor(scene) { this.graphic = scene.add.graphics().setDepth(790); this.drawn = false; }
+  constructor(scene) { this.scene = scene; this.graphic = scene.add.graphics().setDepth(790); this.drawn = false; }
   update(playerView, input, preview) {
     const g = this.graphic;
     // Basic fire is communicated on its button, not by a persistent world ray.
@@ -35,14 +36,26 @@ export class AimView {
       return;
     }
     const aimX = preview?.aimX ?? input.aimX, aimY = preview?.aimY ?? input.aimY;
-    const tip = traceWalkableMove(origin, { x: origin.x + aimX * range, y: origin.y + aimY * range }, skill?.castType === 'zone' ? 0 : skill?.distance ? PLAYER.radius : PLAYER.projectileRadius);
+    const radius = skill?.castType === 'dash' ? PLAYER.radius : skill?.id === 'repulse' ? 22 : skill?.id === 'precision' ? 11 : 13;
+    const blocks = skill?.castType === 'dash' ? point => structureBlocks(this.scene.views?.structures || [], point, PLAYER.radius) : undefined;
+    const tip = traceWalkableMove(origin, { x: origin.x + aimX * range, y: origin.y + aimY * range }, skill?.castType === 'zone' ? 0 : radius, blocks);
     if (skill?.castType === 'zone') {
       g.lineStyle(1, color, .3).lineBetween(origin.x, origin.y, tip.x, tip.y);
       g.lineStyle(2, color, .8).strokeCircle(tip.x, tip.y, skill.radius);
       g.fillStyle(color, .08).fillCircle(tip.x, tip.y, skill.radius);
       return;
     }
-    g.lineStyle(skill ? 24 : 3, color, skill ? .12 : .3).lineBetween(origin.x, origin.y, tip.x, tip.y);
-    g.lineStyle(2, color, .8).lineBetween(origin.x, origin.y, tip.x, tip.y).strokeCircle(tip.x, tip.y, 9);
+    if (skill?.castType === 'fan') {
+      const angle = Math.atan2(aimY, aimX);
+      for (let shot = 0; shot < skill.count; shot++) {
+        const heading = angle + (shot - (skill.count - 1) / 2) * skill.spread;
+        const end = traceWalkableMove(origin, { x: origin.x + Math.cos(heading) * range, y: origin.y + Math.sin(heading) * range }, 7);
+        g.lineStyle(14, color, .1).lineBetween(origin.x, origin.y, end.x, end.y);
+        g.lineStyle(1, color, .75).lineBetween(origin.x, origin.y, end.x, end.y).strokeCircle(end.x, end.y, 7);
+      }
+      return;
+    }
+    g.lineStyle(radius * 2, color, .12).lineBetween(origin.x, origin.y, tip.x, tip.y);
+    g.lineStyle(2, color, .8).lineBetween(origin.x, origin.y, tip.x, tip.y).strokeCircle(tip.x, tip.y, radius);
   }
 }

@@ -96,9 +96,12 @@ export const CAMPS = Object.freeze({
   aegis: { hp: 950, radius: 34, damage: 54, cooldown: 1.2, windup: 0.5, strikeRadius: 72, slow: 0.2, slowSeconds: 0.8, xp: 140 },
   tempo: { hp: 1200, radius: 38, damage: 66, cooldown: 1.35, windup: 0.58, strikeRadius: 92, knockback: 45, xp: 180 },
   relicSeconds: 45,
-  powerSeconds: 30,
-  powerDamageBonus: 0.03,
-  powerSpeedBonus: 0.03,
+});
+
+export const BOSS_POWERS = Object.freeze({
+  aegis: Object.freeze({ id: 'aegis', duration: 30, cooldownReduction: 0.04, totalCooldownCap: 0.12,
+    guardDamage: 35, guardCooldown: 8 }),
+  tempo: Object.freeze({ id: 'tempo', duration: 30, hitDamage: 18, hitCooldown: 3, slow: 0.12, slowSeconds: 0.6 }),
 });
 
 export const VISION = Object.freeze({

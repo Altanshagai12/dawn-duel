@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { InputController } from '../src/game/InputController.js';
+import { INPUT_TIMELINE } from '../src/game/inputTimeline.js';
 import { applyInput, consumeSkillPress, consumeSkillCast } from '../server/inputs.js';
 import { playingWorld } from './helpers.js';
 
@@ -234,4 +235,20 @@ test('accessible activation sends one released tap, disabled buttons send nothin
   input.reconcile({ attackPress: 9 }); input.setAttack(true);
   assert.equal(sent.at(-1).attackPress, 10);
   input.resetSession(); assert.equal(input.state.attackPress, 0);
+});
+
+test('movement packets retain a local replay timeline without putting metadata on the wire', t => {
+  let now = 100;
+  const { input, sent } = setup(t);
+  input.timeline.clock = () => now;
+  input.setEnabled(true);
+  input.state.moveX = 1; input.flush(); now = 150; input.flush();
+  assert.equal(INPUT_TIMELINE in input.state, true);
+  assert.equal(INPUT_TIMELINE in sent.at(-1), false);
+  assert.deepEqual(input.timeline.entries.map(entry => [entry.seq, entry.at]), [[1, 100], [2, 150]]);
+  input.reconcile({ inputSeq: 2 });
+  input.reconcile({ inputSeq: 1 });
+  assert.deepEqual(input.timeline.entries.map(entry => entry.seq), [2], 'a stale snapshot cannot erase newer history');
+  input.resetSession(); input.setEnabled(true); input.flush();
+  assert.equal(sent.at(-1).seq, 1); assert.equal(input.timeline.entries.length, 1);
 });

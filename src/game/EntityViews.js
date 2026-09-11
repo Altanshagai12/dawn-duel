@@ -3,7 +3,9 @@ import { EntityMotion, MotionClock, facingRow, moveView } from './motion.js';
 import { guardianFrame, projectileArt } from './combatArt.js';
 import { SkillEffects } from './SkillEffects.js';
 import { ShotEffects } from './ShotEffects.js';
+import { CombatCallouts } from './CombatCallouts.js';
 import { createStatusView, updateStatusView } from './StatusView.js';
+import { rememberEffect } from './recentEffects.js';
 export { predictionSpeed, structureBlocks } from './motion.js';
 
 const HERO_SCALE = { shana: .43, diamond: .42, scarlett: .43, hina: .43 };
@@ -35,6 +37,7 @@ export class EntityViews {
     this.playing = false; this.snapshotNow = undefined; this.localId = null;
     this.skillEffects?.reset();
     this.shotEffects?.reset();
+    this.callouts?.reset();
   }
 
   color(team) { return team === 0 || team === 1 ? COLORS[team === this.team ? 0 : 1] : 0xc4a4ff; }
@@ -161,10 +164,11 @@ export class EntityViews {
     const clientMs = performance.now();
     const renderMs = this.motionClock.sample(clientMs);
     const visualNow = (this.snapshotNow || 0) + (this.playing ? Math.min(.1, Math.max(0, (clientMs - (this.receivedMs || clientMs)) / 1000)) : 0);
-    this.skillEffects?.update(visualNow);
+    this.skillEffects?.update(visualNow, clientMs / 1000);
     // Transient shot trails age on the monotonic client clock so packet silence
     // cannot freeze them; persistent ground warnings stay on server visual time.
     this.shotEffects?.update(clientMs / 1000);
+    this.callouts?.update(clientMs / 1000, this.items);
     for (const [id, view] of this.items) {
       const local = id === this.localId && view.entity.kind === 'player';
       const beforeX = view.root.x, beforeY = view.root.y;
@@ -196,11 +200,14 @@ export class EntityViews {
 
   renderEffects(effects) {
     for (const effect of effects) {
-      if (this.seenEffects.has(effect.id)) continue;
-      this.seenEffects.add(effect.id);
+      if (!rememberEffect(this.seenEffects, effect.id)) continue;
+      if (effect.kind === 'skillCast' || effect.kind === 'bossPowerProc') {
+        this.callouts ||= new CombatCallouts(this.scene);
+        this.callouts.show(effect, performance.now() / 1000);
+      }
       if (effect.kind === 'skillCast' || effect.kind === 'cinderZone') {
         this.skillEffects ||= new SkillEffects(this.scene);
-        this.skillEffects.show(effect, this.snapshotNow || 0);
+        this.skillEffects.show(effect, this.snapshotNow || 0, performance.now() / 1000);
       } else if (effect.kind === 'campWarn') {
         const ring = this.scene.add.circle(effect.x, effect.y, effect.radius, 0xff594d, .12).setStrokeStyle(4, 0xff786e, .8).setDepth(550);
         this.scene.tweens.add({ targets: ring, scale: .25, alpha: .9, duration: 480, onComplete: () => ring.destroy() });
@@ -217,7 +224,6 @@ export class EntityViews {
         this.scene.tweens.add({ targets: ring, scale: 1.8, alpha: 0, duration: 280, onComplete: () => ring.destroy() });
       }
     }
-    if (this.seenEffects.size > 500) this.seenEffects.clear();
   }
 
 }

@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
-const output = resolve(root, 'app.v7.js');
+const output = resolve(root, 'app.v8.js');
 
 await build({
   absWorkingDir: root,
@@ -21,4 +21,4 @@ const bundle = await readFile(output, 'utf8');
 if (!bundle.includes('createGameBridge') || !bundle.includes('boot().catch')) {
   throw new Error('Browser bundle is missing Dawn Duel entry points');
 }
-console.log(`[build] app.v7.js ${Buffer.byteLength(bundle)} bytes`);
+console.log(`[build] app.v8.js ${Buffer.byteLength(bundle)} bytes`);

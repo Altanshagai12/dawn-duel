@@ -5,12 +5,14 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
   <meta name="theme-color" content="#081414">
   <title>Dawn Duel</title>
-  <link rel="stylesheet" href="./styles/base.css?v=7">
-  <link rel="stylesheet" href="./styles/viewport.css?v=7">
-  <link rel="stylesheet" href="./styles/hud.css?v=7">
-  <link rel="stylesheet" href="./styles/fire-feedback.css?v=7">
-  <link rel="stylesheet" href="./styles/responsive.css?v=7">
-  <link rel="stylesheet" href="./styles/combat-controls.css?v=7">
+  <link rel="stylesheet" href="./styles/base.css?v=8">
+  <link rel="stylesheet" href="./styles/viewport.css?v=8">
+  <link rel="stylesheet" href="./styles/hud.css?v=8">
+  <link rel="stylesheet" href="./styles/fire-feedback.css?v=8">
+  <link rel="stylesheet" href="./styles/responsive.css?v=8">
+  <link rel="stylesheet" href="./styles/combat-controls.css?v=8">
+  <link rel="stylesheet" href="./styles/combat-readability.css?v=8">
+  <link rel="stylesheet" href="./styles/choice-feedback.css?v=8">
 </head>
 <body>
   <main id="app">
@@ -57,7 +59,8 @@
       <canvas id="minimap" width="192" height="108" aria-label="Minimap"></canvas>
       <small id="objective-status" class="objective-status"></small>
       <div id="player-bars" class="player-bars">
-        <small id="boss-power-status" class="boss-power-status is-hidden"></small>
+        <div id="boss-power-status" class="boss-power-status is-hidden"></div>
+        <button id="combat-info" type="button" aria-expanded="false" aria-controls="combat-inspect">ⓘ</button>
         <div><span id="hero-name">SHANA</span><b id="hp-copy">1500 / 1500</b></div>
         <i><em id="hp-bar"></em><u id="shield-bar"></u></i>
         <i class="xp"><em id="xp-bar"></em></i>
@@ -66,6 +69,12 @@
       </div>
       <div id="announcement" class="announcement"></div>
     </div>
+      <section id="combat-inspect" class="combat-inspect is-hidden" aria-labelledby="combat-inspect-title">
+        <header><h3 id="combat-inspect-title"></h3><button id="combat-info-close" type="button">×</button></header>
+        <p id="combat-stats"></p><p id="combat-defense"></p><p id="combat-ranges"></p>
+        <p id="combat-skill-0" class="skill-detail"></p><p id="combat-skill-1" class="skill-detail"></p>
+        <p id="combat-passive"></p><p id="combat-powers" class="skill-detail"></p><p id="combat-power-rule"></p>
+      </section>
 
     <aside id="choice-stack" class="choice-stack">
       <section id="upgrade" class="choice-tray is-hidden" aria-live="polite">
@@ -117,6 +126,6 @@
   </main>
   <script src="https://usions.com/vendor/phaser/4.2.1/phaser.min.js"></script>
   <script src="https://usions.com/usion-sdk.js"></script>
-  <script type="module" src="./app.v7.js"></script>
+  <script type="module" src="./app.v8.js"></script>
 </body>
 </html>
