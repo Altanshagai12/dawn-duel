@@ -8,7 +8,9 @@ import { UIController } from './ui/UIController.js';
 import { languageFromPlatform } from './ui/i18n.js';
 import { installLandscapeMode } from './ui/orientation.js';
 import { canControl } from './ui/presentation.js';
+import { installGameInteractionGuard } from './ui/interaction-guard.js';
 
+installGameInteractionGuard();
 installLandscapeMode();
 let session;
 let unsubscribe;

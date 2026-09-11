@@ -24,7 +24,7 @@ export function predictionSpeed(player, now) {
 }
 
 export function facingRow(x, y, previous = 4) {
-  if (Math.hypot(x, y) < .001) return previous;
+  if (!Number.isFinite(x) || !Number.isFinite(y) || Math.hypot(x, y) < .001) return previous;
   const angle = Math.atan2(y, x);
   const previousAngle = (previous - 2) * Math.PI / 4;
   const difference = Math.atan2(Math.sin(angle - previousAngle), Math.cos(angle - previousAngle));
@@ -118,6 +118,7 @@ export function predictMove(point, input, entity, now, delta, structures, speed)
 
 export function moveView(view, { local, input, playing, now, clientMs, renderMs, delta, structures }) {
   const motion = view.motion, entity = view.entity, root = view.root;
+  motion.moveX = 0; motion.moveY = 0;
   if (motion.snap) {
     const point = motion.authoritative || motion.predicted;
     root.x = point.x; root.y = point.y;
@@ -148,6 +149,9 @@ export function moveView(view, { local, input, playing, now, clientMs, renderMs,
     if (moving && clientMs - motion.receivedMs <= 300) {
       const speed = predictionSpeed(entity, now);
       const next = predictMove(root, input, entity, now, delta, structures, speed);
+      // Actual locomotion before reconciliation: wall slides can differ from
+      // joystick direction, while correction-only drift must not turn a hero.
+      motion.moveX = next.x - root.x; motion.moveY = next.y - root.y;
       root.x = next.x; root.y = next.y;
     }
     const error = Math.hypot(motion.predicted.x - root.x, motion.predicted.y - root.y);

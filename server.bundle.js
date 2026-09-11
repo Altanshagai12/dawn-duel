@@ -2182,6 +2182,7 @@ function castSkill(world, intent) {
     team: player.team,
     ownerId: player.id,
     skillId: skill.id,
+    castAt: world.matchTime,
     angle,
     radius: skill.radius || 0
   }, 0.45);
@@ -2196,6 +2197,8 @@ function updateClones(world) {
     clone.nextShotAt = world.matchTime + config2.cloneInterval;
     clone.shotsLeft -= 1;
     const angle = Math.atan2(target.y - clone.y, target.x - clone.x);
+    clone.attackAt = world.matchTime;
+    clone.attackAngle = angle;
     fire(
       world,
       { ...clone, id: owner.id },

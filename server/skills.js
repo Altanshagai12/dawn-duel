@@ -90,7 +90,7 @@ export function castSkill(world, intent) {
         missingHpCap: skill.missingHpCap * stats.skillDamage, slow: skill.slow, slowSeconds: skill.slowSeconds } });
   }
   addEffect(world, 'skillCast', { ...origin, tx: end.x, ty: end.y, team: player.team,
-    ownerId: player.id, skillId: skill.id, angle, radius: skill.radius || 0 }, .45);
+    ownerId: player.id, skillId: skill.id, castAt: world.matchTime, angle, radius: skill.radius || 0 }, .45);
 }
 
 export function updateClones(world) {
@@ -103,6 +103,7 @@ export function updateClones(world) {
     if (!target) continue;
     clone.nextShotAt = world.matchTime + config.cloneInterval; clone.shotsLeft -= 1;
     const angle = Math.atan2(target.y - clone.y, target.x - clone.x);
+    clone.attackAt = world.matchTime; clone.attackAngle = angle;
     fire(world, { ...clone, id: owner.id }, angle, clone.damage * derivedStats(owner, world.matchTime).skillDamage,
       { speed: 650, range: config.cloneRange, radius: 7, damageClass: 'skill', projectileType: 'clone', targetId: target.id });
   }

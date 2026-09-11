@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { InputController } from '../src/game/InputController.js';
 import { INPUT_TIMELINE } from '../src/game/inputTimeline.js';
+import { installGameInteractionGuard } from '../src/ui/interaction-guard.js';
 import { applyInput, consumeSkillPress, consumeSkillCast } from '../server/inputs.js';
 import { playingWorld } from './helpers.js';
 
@@ -22,8 +23,9 @@ function setup(t) {
   const previous = { document: globalThis.document, addEventListener: globalThis.addEventListener, matchMedia: globalThis.matchMedia };
   globalThis.matchMedia = () => ({ matches: false });
   globalThis.document = doc; globalThis.addEventListener = root.addEventListener.bind(root);
+  const disposeGuard = installGameInteractionGuard(doc);
   const sent = [], input = new InputController(value => sent.push(value));
-  t.after(() => { clearInterval(input.timer); Object.assign(globalThis, previous); });
+  t.after(() => { disposeGuard(); clearInterval(input.timer); Object.assign(globalThis, previous); });
   return { input, nodes, sent, root, doc };
 }
 

@@ -1,5 +1,6 @@
 import { STRUCTURES } from '../../server/config.js';
-import { EntityMotion, MotionClock, facingRow, moveView } from './motion.js';
+import { EntityMotion, MotionClock, moveView } from './motion.js';
+import { FacingState, heroAnimationFrame } from './facing.js';
 import { guardianFrame, projectileArt } from './combatArt.js';
 import { SkillEffects } from './SkillEffects.js';
 import { ShotEffects } from './ShotEffects.js';
@@ -127,9 +128,12 @@ export class EntityViews {
         view = null;
       }
       if (!view) { view = this.create(entity); this.items.set(entity.id, view); }
+      if (resetMotion || view.entity.deaths !== entity.deaths) view.facing?.reset(entity);
+      view.facing ||= new FacingState(view.row);
       if (!view.motion) view.motion = new EntityMotion(entity, snapshot.now * 1000, receivedMs);
       else view.motion.accept(entity, snapshot.now * 1000, receivedMs, resetMotion);
       view.entity = entity;
+      if (playing && !(entity.spiritUntil > snapshot.now)) view.facing.observeAttack(entity, snapshot.now, receivedMs);
       view.targetX = entity.x; view.targetY = entity.y;
       if (entity.kind === 'projectile') {
         const heading = Math.atan2(entity.dy ?? 0, entity.dx ?? 1);
@@ -184,15 +188,15 @@ export class EntityViews {
         continue;
       }
       const dx = view.root.x - beforeX, dy = view.root.y - beforeY;
-      const moving = !view.justSnapped && Math.hypot(dx, dy) > delta / 1000;
-      const firing = this.playing && !(view.entity.spiritUntil > this.snapshotNow)
-        && ((local && input.attack) || visualNow - (view.entity.attackAt ?? -10) < .3);
-      if (firing) view.row = facingRow(view.entity.attackAimX ?? input.aimX, view.entity.attackAimY ?? input.aimY, view.row);
-      else if (local && Math.hypot(input.moveX || 0, input.moveY || 0) > .02) {
-        view.row = facingRow(input.moveX, input.moveY, view.row);
-      } else if (moving) view.row = facingRow(dx, dy, view.row);
-      view.animationMs = moving || firing ? (view.animationMs || 0) + delta : 0;
-      const frame = (view.row ?? 4) * 6 + Math.floor(view.animationMs / 110) % 6;
+      const moving = !view.justSnapped && Math.hypot(local ? view.motion.moveX : dx, local ? view.motion.moveY : dy) > delta / 1000;
+      const steering = local && Math.hypot(input.moveX || 0, input.moveY || 0) > .02;
+      const moveX = local ? (steering ? (moving ? view.motion.moveX : input.moveX) : 0) : (moving ? dx : 0);
+      const moveY = local ? (steering ? (moving ? view.motion.moveY : input.moveY) : 0) : (moving ? dy : 0);
+      view.facing ||= new FacingState(view.row);
+      view.row = view.facing.update(moveX, moveY, clientMs, this.playing, view.entity.spiritUntil > this.snapshotNow);
+      view.animationMs = moving || view.facing.acting ? (view.animationMs || 0) + delta : 0;
+      const { frame, flipX } = heroAnimationFrame(view.entity.hero, view.row, view.animationMs);
+      if (view.flipX !== flipX) { view.sprite.setFlipX(flipX); view.flipX = flipX; }
       if (view.frame !== frame) { view.sprite.setFrame(frame); view.frame = frame; }
       if (view.depth !== view.root.y + 30) { view.depth = view.root.y + 30; view.root.setDepth(view.depth); }
     }
@@ -201,6 +205,12 @@ export class EntityViews {
   renderEffects(effects) {
     for (const effect of effects) {
       if (!rememberEffect(this.seenEffects, effect.id)) continue;
+      if (effect.kind === 'skillCast' && this.playing) {
+        const owner = this.items.get(effect.ownerId);
+        if (owner && !(owner.entity.spiritUntil > this.snapshotNow)) {
+          owner.facing?.observeSkill(effect, this.snapshotNow, this.receivedMs);
+        }
+      }
       if (effect.kind === 'skillCast' || effect.kind === 'bossPowerProc') {
         this.callouts ||= new CombatCallouts(this.scene);
         this.callouts.show(effect, performance.now() / 1000);
